@@ -599,7 +599,7 @@ class BondLayout:
     atom_name: np.ndarray
         Atom names of the connecting atoms in the bond of shape [Nbond, 2].
     bond_type: np.ndarray
-        Bond types of shape [Nbond,], indicating the type of each bond.
+        RDKit BondType values of shape [Nbond,], indicating the type of each bond.
 
     # TODO: is there any inter-residue bond in RCSB?
     """
@@ -627,7 +627,7 @@ class BondLayout:
         return {
             "residue_index": np.uint32,
             "atom_name": np.dtype("<U4"),
-            "bond_type": np.uint8,  # 0-5
+            "bond_type": np.uint8,  # 0-5, RDKit BondType values
         }
 
 

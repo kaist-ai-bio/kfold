@@ -45,12 +45,10 @@ def _add_pdb_header(struct: gemmi.Structure) -> None:
     struct.raw_remarks = remarks
 
 
-def _make_prediction_mmcif_block(
-    struct: gemmi.Structure, ost_compatible: bool = True
-) -> gemmi.cif.Block:
+def _make_prediction_mmcif_block(struct: RefStructure) -> gemmi.cif.Block:
     """Create prediction metadata before adding structure categories."""
-    block = gemmi.cif.Block(struct.name)
-    block.set_pair("_entry.id", gemmi.cif.quote(struct.name))
+    block = gemmi.cif.Block(struct.metadata.id)
+    block.set_pair("_entry.id", gemmi.cif.quote(struct.metadata.id))
     audit_loop = block.init_loop("_audit_author.", ["name", "pdbx_ordinal"])
     audit_loop.add_row([gemmi.cif.quote(AUTHOR_NAME), "1"])
     # block.set_pair("_citation.id", "primary")
@@ -82,7 +80,7 @@ def _make_prediction_mmcif_block(
             "1.0.2",
         ]
     )
-    return make_mmcif_block(struct, ost_compatible, block=block)
+    return make_mmcif_block(struct, block=block)
 
 
 class KFoldWriter:
@@ -126,10 +124,8 @@ class KFoldWriter:
     def write_mmcif(
         struct: RefStructure,
         filename: str | Path,
-        ost_compatible: bool = True,
     ) -> None:
-        gemmi_struct: gemmi.Structure = create_gemmi_structure(struct)
-        block = _make_prediction_mmcif_block(gemmi_struct, ost_compatible)
+        block = _make_prediction_mmcif_block(struct)
         block.write_file(str(filename))
 
     @staticmethod
@@ -144,12 +140,8 @@ class KFoldWriter:
         gemmi_struct.write_pdb(str(filename))
 
     @staticmethod
-    def write_mmcifstring(
-        struct: RefStructure,
-        ost_compatible: bool = True,
-    ) -> str:
-        gemmi_struct: gemmi.Structure = create_gemmi_structure(struct)
-        block = _make_prediction_mmcif_block(gemmi_struct, ost_compatible)
+    def write_mmcifstring(struct: RefStructure) -> str:
+        block = _make_prediction_mmcif_block(struct)
         return block.as_string()
 
     @staticmethod
@@ -197,16 +189,16 @@ class KFoldWriter:
                     frame_coords = rigid_align(frame_coords, prev_coords, mask=None)
                 prev_coords = frame_coords
                 frame_struct = struct.copy_with_new_coords(frame_coords)
-                _struct: gemmi.Structure = create_gemmi_structure(
-                    frame_struct, pdb_compatible=pdb_compatible
-                )
+                if pdb_compatible:
+                    _struct = create_gemmi_structure(frame_struct, pdb_compatible=True)
+                else:
+                    frame_block = _make_prediction_mmcif_block(frame_struct)
+                    if i == 0:
+                        block = frame_block
+                    _struct = gemmi.make_structure_from_block(frame_block)
                 if i == 0:
                     traj_structures.connections = _struct.connections
-                # Convert to block and back to ensure proper model addition
-                block = gemmi.cif.read_string(
-                    make_mmcif_block(_struct).as_string()
-                ).sole_block()
-                model = gemmi.make_structure_from_block(block)[0]
+                model = _struct[0]
                 if hasattr(model, "name"):
                     model.name = str(i + 1)
                 else:
@@ -218,7 +210,10 @@ class KFoldWriter:
                 _add_pdb_header(traj_structures)
                 traj_structures.write_pdb(str(filename))
             else:
-                block = _make_prediction_mmcif_block(traj_structures)
+                # Keep shared component definitions and replace all frame coordinates.
+                groups = gemmi.MmcifOutputGroups(False)
+                groups.atoms = True
+                traj_structures.update_mmcif_block(block, groups)
                 block.write_file(str(filename))
         except Exception as e:
             raise OSError(f"Failed to write trajectory to {filename}") from e
