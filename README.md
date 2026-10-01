@@ -1,12 +1,9 @@
 # K-Fold
 
-**\[Notice\]** Preprint will be released soon!
+K-Fold is a biomolecular foundation model that predicts binding-induced conformational changes.
+Through an apo-to-holo diffusion bridge, it models how unbound molecules assemble and change shape upon binding, including GPCR and kinase systems.
 
-K-Fold predicts biomolecular complex structures and binding-induced conformational changes.
-Through an apo-to-holo diffusion bridge, K-Fold aims to capture conformational changes in systems such as G protein-coupled receptors (GPCRs).
-
-K-Fold supports proteins, DNA, RNA, small molecules, and chemical modifications without multiple sequence alignments (MSAs).
-This repository provides pretrained models, inference and training code, and data preprocessing workflows.
+![K-Fold assembles unbound component structures into a bound complex.](docs/images/figure_1.jpg)
 
 ## Model parameters
 
@@ -39,15 +36,20 @@ Run predictions from a YAML or JSON query file, or a directory of query files fo
 kfold --input examples/8and.yaml --out-dir predictions/ --seeds 42
 ```
 
-By default, K-Fold prepares apo structures with [AtlasFold](https://github.com/SeonghwanSeo/atlasfold), then runs K-Fold predictions.
+See `kfold --help`, the [inference guide](docs/inference.md), or the [Python API guide](docs/python_api.md) for details.
+
+By default, K-Fold prepares apo structures with [AtlasFold](https://github.com/SeonghwanSeo/atlasfold), then runs complex structure prediction.
 You can also [provide apo structures](docs/inference.md#providing-apo-structures) from experiments or other prediction tools (e.g., AlphaFold2).
 
-Use `--kernel {auto,triton,cuequiv,torch}` to select the backend for K-Fold complex prediction and AtlasFold apo preparation.
-The default, `auto`, prefers Triton, then cuEquivariance, then PyTorch, depending on availability.
-
-For multi-seed inference, use `--share-apo-seeds 1 2 3` to generate an apo ensemble for each protein entry and reuse it across all inference seeds specified by `--seeds`.
+**Efficient inference with multiple seeds:**
+For multi-seed inference, use `--share-apo-seeds` to generate an apo ensemble for each protein entry and reuse it across all inference seeds.
 This is particularly useful for relatively rigid apo structures or runs with many inference seeds; see [automatic apo generation](docs/inference.md#automatic-generation).
 
+```bash
+kfold --input examples/ --out-dir predictions/ --share-apo-seeds 1 2 3 --seeds 1 2 3 4 5 6 7 8 9 10
+```
+
+**Multi-stage inference:**
 Use `--stage apo` to prepare apo structures only, or `--stage complex` to predict complexes from prepared apos:
 
 ```bash
@@ -55,11 +57,17 @@ kfold --stage apo --input examples/ --out-dir predictions/ --seeds 42
 kfold --stage complex --input examples/ --out-dir predictions/ --seeds 42
 ```
 
-See `kfold --help`, the [inference guide](docs/inference.md), or the [Python API guide](docs/python_api.md) for details.
+**Kernel selection:**
+Use `--kernel {auto,triton,cuequiv,torch}` to select the backend for AtlasFold apo preparation and K-Fold complex prediction.
+The default, `auto`, prefers Triton, then cuEquivariance, then PyTorch, depending on availability.
 
 ## Training
 
 See the [training guide](docs/training.md) for data preparation, training commands, and configuration.
+
+## Citation
+
+TBA
 
 ## Acknowledgements
 
