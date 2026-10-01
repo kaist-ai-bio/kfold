@@ -168,7 +168,6 @@ class DiffusionStack(nn.Module):
         channel_atompair: int = 16,
         channel_coords: int = 3,
         separate_endpoint_atom_encoder: bool = False,
-        endpoint_branch_dropout: float = 0.0,
         atom_encoder_blocks: int = 3,
         atom_encoder_heads: int = 4,
         token_transformer_blocks: int = 24,
@@ -198,9 +197,6 @@ class DiffusionStack(nn.Module):
         separate_endpoint_atom_encoder : bool, optional
             Whether to split a 6-channel ECSI coordinate input into separate
             current-state and endpoint atom encoders, by default False.
-        endpoint_branch_dropout : float, optional
-            Dropout probability applied to the encoded endpoint token branch when
-            separate_endpoint_atom_encoder is enabled, by default 0.0.
         atom_encoder_blocks : int, optional
             The number of blocks in the atom encoder, by default 3.
         atom_encoder_heads : int, optional
@@ -228,7 +224,6 @@ class DiffusionStack(nn.Module):
         self.channel_atompair: int = channel_atompair
         self.channel_coords: int = channel_coords
         self.separate_endpoint_atom_encoder: bool = separate_endpoint_atom_encoder
-        self.endpoint_branch_dropout: float = endpoint_branch_dropout
         self.atom_encoder_blocks: int = atom_encoder_blocks
         self.atom_encoder_heads: int = atom_encoder_heads
         self.token_transformer_blocks: int = token_transformer_blocks
@@ -246,8 +241,6 @@ class DiffusionStack(nn.Module):
                 "separate_endpoint_atom_encoder expects channel_coords=6 "
                 "for [r_t, r_T] ECSI inputs."
             )
-        if not 0.0 <= endpoint_branch_dropout < 1.0:
-            raise ValueError("endpoint_branch_dropout must be in [0, 1).")
         atom_encoder_channel_coords = (
             3 if separate_endpoint_atom_encoder else channel_coords
         )
@@ -547,16 +540,6 @@ class DiffusionStack(nn.Module):
                 mask=atom_mask,  # [B, 1, La]
                 num_tokens=token_mask.shape[-1],
             )
-            if self.training and self.endpoint_branch_dropout > 0.0:
-                keep_prob = 1.0 - self.endpoint_branch_dropout
-                keep = (
-                    torch.rand(
-                        (*a_endpoint.shape[:2], 1, 1),
-                        device=a_endpoint.device,
-                    )
-                    < keep_prob
-                )
-                a_endpoint = a_endpoint * keep.to(a_endpoint.dtype) / keep_prob
             a = self.endpoint_fusion(
                 torch.cat(
                     (self.layernorm_a_t(a), self.layernorm_a_endpoint(a_endpoint)),

@@ -299,8 +299,6 @@ class KFoldForTrain(KFold):
         """
         # Ensure batched input
         assert f_input.is_batched, "Input must be batched for training.."
-        if self.diffusion_type == "edm" and soar_config.mode != "disabled":
-            raise ValueError("SOAR is only supported when diffusion_type='ecsi'.")
         batch_size: int = f_input.batch_size
         device: torch.device = f_input.device
 
@@ -336,21 +334,13 @@ class KFoldForTrain(KFold):
 
             # Forward pass through diffusion head for training.
             with torch.autocast(device.type, enabled=False):
-                if self.diffusion_type == "ecsi":
-                    dict_out["diffusion"] = self.diffusion_head.training_step(
-                        f_input,
-                        s_inputs,
-                        _z,
-                        diffusion_batch_size,
-                        soar_config,
-                    )
-                else:
-                    dict_out["diffusion"] = self.diffusion_head.training_step(
-                        f_input,
-                        s_inputs,
-                        _z,
-                        diffusion_batch_size,
-                    )
+                dict_out["diffusion"] = self.diffusion_head.training_step(
+                    f_input,
+                    s_inputs,
+                    _z,
+                    diffusion_batch_size,
+                    soar_config,
+                )
 
         if train_confidence_module:
             # Stop gradients to input features and trunk outputs.

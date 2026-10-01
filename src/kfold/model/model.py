@@ -68,8 +68,7 @@ class KFoldConfig:
     # Model dimensions
     channel_s: int = 384
     channel_z: int = 256
-    dropout: float = 0.25
-    diffusion_type: str
+    lm_dropout: float = 0.25
 
     # Sub-module configurations
     input_embedder: input_embedder.InputEmbedder.Config
@@ -147,14 +146,8 @@ class KFold(torch.nn.Module):
         self.config: KFoldConfig = config
         self.channel_s: int = config.channel_s
         self.channel_z: int = config.channel_z
-        self.dropout: float = config.dropout
-        self.diffusion_type: str = config.diffusion_type
+        self.lm_dropout: float = config.lm_dropout
         self.cpu_offload: bool = False
-        if self.diffusion_type not in {"ecsi", "edm"}:
-            raise ValueError(
-                f"Unknown diffusion_type {self.diffusion_type!r}. "
-                "Expected 'ecsi' or 'edm'."
-            )
 
         self.trunk_config = resolve_config(TrunkConfig, config.trunk)
         self.parcae_config = resolve_config(ParcaeConfig, config.parcae)
@@ -529,7 +522,7 @@ class KFold(torch.nn.Module):
         # Main trunk iteration with Parcae recurrence
         for _ in range(0, num_recycles + 1):
             # Intentional dropout during inference.
-            _z_lm = F.dropout(z_lm, p=self.dropout, training=True)
+            _z_lm = F.dropout(z_lm, p=self.lm_dropout, training=True)
             u_t = z_inputs + self.lm_stack(_z_lm, pair_mask)
             # Parcae recurrence: z_in = a * z_t + B_bar LN(u_t)
             z = a * z + F.linear(self.layernorm_z(u_t), b)
@@ -590,7 +583,12 @@ class KFold(torch.nn.Module):
         else:
             repo_id = str(pretrained_model_name_or_path)
             repo_path = pathlib.Path(
-                snapshot_download(repo_id, repo_type="model", cache_dir=cache_dir)
+                snapshot_download(
+                    repo_id,
+                    repo_type="model",
+                    revision="v1.0.0" if repo_id == MODEL_REPO_ID else None,
+                    cache_dir=cache_dir,
+                )
             )
             model_path = repo_path / "weights/kfold.pth"
             config_path = repo_path / "config.yaml"
