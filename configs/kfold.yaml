@@ -1,7 +1,7 @@
 # === Model Configuration === #
 channel_s: 384
 channel_z: 256
-dropout: 0.25
+lm_dropout: 0.25
 
 input_embedder:
   channel_s: 384
@@ -66,7 +66,6 @@ score_model:
   channel_atompair: 16
   channel_coords: 6
   separate_endpoint_atom_encoder: true
-  endpoint_branch_dropout: 0.0
   atom_encoder_blocks: 3
   atom_encoder_heads: 4
   token_transformer_blocks: 16
@@ -77,37 +76,31 @@ score_model:
   ckpt_atom_stack: false
 
 diffusion_head:
-  # ECSI preconditioning
-  sigma_data: 16.0
-  sigma_data_end: 27.0
-  cov_xy: 175.0
-
-  # ECSI coefficients
+  # ECSI preconditioning & coefficients
+  sigma_0: 16.0
+  sigma_T: 27.0
+  cov_0T: 175.0
   time_min: 1e-8
   time_max: 0.9999
-  gamma_max: 24.0
-  gamma_power: 1.0
-  eta: 1.0
+  gamma_max: 6.0
 
   # Inference time schedule
-  align_x_0_hat_to_x_t: true
-  sampler_mode: sde
-  sampler_ode_type: ecsi
-  sampler_step_scale: 1.0
-  sampler_switch_time: 0.1
-  sampler_sde_atom_classes: [all]
-  churn_factor: 0.1
-  churn_max_multiplier: 4.0
+  time_schedule_boundary: 0.5
+  sample_step_fraction: [0.4, 0.6]
+  sample_time_power: [0.5, 2.0]
+
+  # Inference updates
+  sde_end_time: 0.1
+  eta: 1.0
+  step_scale: 1.0
+
+  # Churn
   churn_end_time: 0.5
-  churn_max_time: null
-  churn_step_fraction: 0.4
-  churn_step_power: 1.0
-  ode_step_power: 2.0
-  stepwarp_power: 0.5
+  churn_factor_range: [0.1, 0.4]
 
   # Training time schedule
-  train_time_schedule: logistic
-  train_time_schedule_params: [-2.15, 2.25]
+  train_time_distribution: logistic
+  train_time_distribution_params: [-2.15, 2.25]
   train_x_0_perturb_time_min: 0.7
   train_x_0_perturb_prob: 0.0
   train_x_0_perturb_translation_std: 4.0

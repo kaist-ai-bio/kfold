@@ -55,7 +55,7 @@ Modifications use `Modification(index=4, ccd="SEP")`; bonds use `Bond(atom1=("A"
 
 | Argument | Default | Description |
 | --- | --- | --- |
-| `pretrained_model_name_or_path` | `"SeonghwanSeo/kfold"` | Hugging Face repo or local directory with `config.yaml` and `weights/kfold.pth`. |
+| `pretrained_model_name_or_path` | `"kaist-ai-bio/kfold"` | Hugging Face repo or local directory with `config.yaml` and `weights/kfold.pth`. |
 | `device` | `"cuda"` | Model device, e.g. `"cuda:1"`; inference requires CUDA. |
 | `cache_dir` | `None` | Model and encoder weight cache; defaults to the Hugging Face cache. |
 | `use_struct_encoder` | `True` | Load the protein structure encoder; disabling saves memory while retaining apo coordinates. |

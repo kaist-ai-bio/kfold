@@ -37,7 +37,7 @@ restypes = [
 ]  # fmt: skip
 restype_order = {restype: i for i, restype in enumerate(restypes)}
 
-HF_REPO_ID = "SeonghwanSeo/kfold-assets"
+HF_REPO_ID = "kaist-ai-bio/kfold-assets"
 HF_ENCODER_FILENAME = "weights/prot_struct_encoder_3b.pth"
 HF_BB_TOKENIZER_FILENAME = "weights/prot_struct_bb_tokenizer.pth"
 HF_FA_TOKENIZER_FILENAME = "weights/prot_struct_fa_tokenizer.pth"

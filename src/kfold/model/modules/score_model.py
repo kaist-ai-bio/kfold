@@ -48,8 +48,6 @@ class DiffusionModule(torch.nn.Module):
         separate_endpoint_atom_encoder : bool, optional
             Split 6-channel ECSI coordinates into separate current-state and
             endpoint atom encoders before shared token-level attention.
-        endpoint_branch_dropout : float, optional
-            Dropout probability for the encoded endpoint token branch.
         atom_encoder_blocks : int, optional
             The number of blocks of the atom encoder, by default 3.
         atom_encoder_heads : int, optional
@@ -75,7 +73,6 @@ class DiffusionModule(torch.nn.Module):
         channel_atompair: int = 16
         channel_coords: int = 3
         separate_endpoint_atom_encoder: bool = False
-        endpoint_branch_dropout: float = 0.0
         atom_encoder_blocks: int = 3
         atom_encoder_heads: int = 4
         token_transformer_blocks: int = 12
@@ -102,7 +99,6 @@ class DiffusionModule(torch.nn.Module):
             channel_atompair=cfg.channel_atompair,
             channel_coords=cfg.channel_coords,
             separate_endpoint_atom_encoder=cfg.separate_endpoint_atom_encoder,
-            endpoint_branch_dropout=cfg.endpoint_branch_dropout,
             atom_encoder_blocks=cfg.atom_encoder_blocks,
             atom_encoder_heads=cfg.atom_encoder_heads,
             token_transformer_blocks=cfg.token_transformer_blocks,

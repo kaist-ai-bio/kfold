@@ -16,6 +16,7 @@
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 from kfold.inference.query import Query
@@ -194,11 +195,15 @@ def _download_models(cache_dir: Path | None) -> None:
         "SeonghwanSeo/atlaslm-3b-base",
         "SeonghwanSeo/atlasfold-260703",
         "SeonghwanSeo/atlasfold-m-260725",
-        "SeonghwanSeo/kfold-assets",
-        "SeonghwanSeo/kfold",
+        "kaist-ai-bio/kfold-assets",
+        "kaist-ai-bio/kfold",
     ):
         try:
-            snapshot_download(repo_id, cache_dir=cache_dir, tqdm_class=DownloadProgress)
+            snapshot_download(
+                repo_id,
+                cache_dir=cache_dir,
+                tqdm_class=DownloadProgress,
+            )
         finally:
             for bar in reversed(progress_bars):
                 bar.close()
@@ -290,6 +295,12 @@ def run(args: argparse.Namespace) -> None:
     from kfold.cli.predict_complex import run as predict_complex
     from kfold.cli.prepare_apo import run as prepare_apo
     from kfold.utils.runtime import select_kernel_backend
+
+    if os.environ.get("OMP_NUM_THREADS") != "1":
+        logger.warning(
+            "OMP_NUM_THREADS is not set to 1; model initialization may be slow. "
+            "Set OMP_NUM_THREADS=1 to avoid this slowdown."
+        )
 
     # Populate the shared cache before any GPU worker loads a model.
     _download_models(args.cache_dir)

@@ -29,38 +29,97 @@ logger = logging.getLogger(__name__)
 
 # === Core implementation === #
 def make_mmcif_block(
-    struct: gemmi.Structure,
-    ost_compatible: bool = True,
+    struct: RefStructure,
     *,
     block: gemmi.cif.Block | None = None,
 ) -> gemmi.cif.Block:
-    """Create a Gemmi MMCIF Block from a Gemmi Structure
+    """Create a Gemmi MMCIF block from a reference structure.
 
     Parameters
     ----------
-    struct : gemmi.Structure
-        The input Gemmi Structure.
-    ost_compatible : bool, optional
-        Whether to add OST-compatible categories (default is True).
+    struct : RefStructure
+        Structure containing coordinates and ligand atom and bond definitions.
     block : gemmi.cif.Block | None, optional
         Block containing metadata to retain before the structure categories.
 
     Returns
-    ----
+    -------
     gemmi.cif.Block
         The constructed MMCIF Block.
     """
+    gemmi_struct = create_gemmi_structure(struct)
     if block is None:
-        block = gemmi.cif.Block(struct.name)
-    struct.update_mmcif_block(block)
-    if ost_compatible:
-        # Add custom categories for OST compatibility
-        _add_pdbx_nonpoly_scheme(block, struct)
-        _add_pdbx_poly_seq_scheme(block, struct)
-        _update_entity_poly(block, struct)
-        _update_entity_poly_seq(block, struct)
-        _update_chem_comp(block)
+        block = gemmi.cif.Block(gemmi_struct.name)
+    gemmi_struct.update_mmcif_block(block)
+    _add_pdbx_nonpoly_scheme(block, gemmi_struct)
+    _add_pdbx_poly_seq_scheme(block, gemmi_struct)
+    _update_entity_poly(block, gemmi_struct)
+    _update_entity_poly_seq(block, gemmi_struct)
+    _update_chem_comp(block)
+    _add_ligand_chem_comp(block, struct)
     return block
+
+
+def _add_ligand_chem_comp(block: gemmi.cif.Block, struct: RefStructure) -> None:
+    """Write ligand atom and bond definitions once per chemical component."""
+    atoms: dict[tuple[str, str], tuple[int, int]] = {}  # (element, charge)
+    bonds: dict[tuple[str, str, str], int] = {}  # bond-type
+    for chain in struct.chains:
+        if not chain.is_ligand:
+            continue
+        for residue_index, comp_id in enumerate(chain.residue.name, start=1):
+            for atom_index in chain.iter_residue_atoms(residue_index):
+                key = (str(comp_id), str(chain.atom.name[atom_index]))
+                atoms.setdefault(
+                    key,
+                    (
+                        int(chain.atom.element[atom_index]),
+                        int(chain.atom.charge[atom_index]),
+                    ),
+                )
+        for residue_indices, atom_names, bond_type in zip(
+            chain.bond.residue_index,
+            chain.bond.atom_name,
+            chain.bond.bond_type,
+            strict=True,
+        ):
+            residue_index_1, residue_index_2 = residue_indices
+            if residue_index_1 != residue_index_2:
+                continue  # Chemical component bonds only describe one residue.
+            comp_id = str(chain.residue.name[residue_index_1 - 1])
+            atom_id_1, atom_id_2 = sorted(str(name) for name in atom_names)
+            bonds.setdefault((comp_id, atom_id_1, atom_id_2), int(bond_type))
+
+    if atoms:
+        atom_loop = block.init_loop(
+            "_chem_comp_atom.", ["comp_id", "atom_id", "type_symbol", "charge"]
+        )
+        for (comp_id, atom_id), (element, charge) in sorted(atoms.items()):
+            atom_loop.add_row(
+                [
+                    gemmi.cif.quote(comp_id),
+                    gemmi.cif.quote(atom_id),
+                    gemmi.Element(element).name,
+                    str(charge),
+                ]
+            )
+    if bonds:
+        bond_loop = block.init_loop(
+            "_chem_comp_bond.",
+            ["comp_id", "atom_id_1", "atom_id_2", "value_order", "pdbx_aromatic_flag"],
+        )
+        # Keys are RDKit bond type values; aromatic bonds use 12.
+        bond_orders = {1: "SING", 2: "DOUB", 3: "TRIP", 4: "QUAD", 12: "AROM"}
+        for (comp_id, atom_id_1, atom_id_2), bond_type in sorted(bonds.items()):
+            bond_loop.add_row(
+                [
+                    gemmi.cif.quote(comp_id),
+                    gemmi.cif.quote(atom_id_1),
+                    gemmi.cif.quote(atom_id_2),
+                    bond_orders.get(bond_type, "?"),
+                    "Y" if bond_type == 12 else "N",
+                ]
+            )
 
 
 def create_gemmi_structure(

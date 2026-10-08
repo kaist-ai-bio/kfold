@@ -93,17 +93,14 @@ training:
     recurrence_sampling_mode: shared # NOTE: `rank_independent` for sample-level recurrence count sampling
 
   soar:
-    mode: disabled
-    root_time_policy: mirror_base_training_time
-    apply_rollout_churn: false
+    enabled: false
+    root_time_min: 0.2
+    root_time_max: 0.8
     rollout_schedule_num_steps: 100
-    rollout_schedule_step_count: 1.0
+    rollout_step_size: 1.0
     auxiliary_samples_per_root: 4
     forward_retention_min: 0.5
-    lambda_aux: 1.0
-    mid_time_lower: 0.2
-    high_time_split: 0.8
-    mid_time_probability: 1.0
+    aux_loss_weight: 1.0
 
 validation:
   # Validation step hyperparameters

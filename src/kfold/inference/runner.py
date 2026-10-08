@@ -50,7 +50,7 @@ from kfold.inference.query import (
 from kfold.model import KFold
 from kfold.utils import confidence_metrics
 
-ASSETS_REPO_ID = "SeonghwanSeo/kfold-assets"
+ASSETS_REPO_ID = "kaist-ai-bio/kfold-assets"
 logger = logging.getLogger(__name__)
 
 
