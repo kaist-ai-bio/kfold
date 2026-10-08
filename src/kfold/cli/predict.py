@@ -195,13 +195,12 @@ def _download_models(cache_dir: Path | None) -> None:
         "SeonghwanSeo/atlaslm-3b-base",
         "SeonghwanSeo/atlasfold-260703",
         "SeonghwanSeo/atlasfold-m-260725",
-        "SeonghwanSeo/kfold-assets",
-        "SeonghwanSeo/kfold",
+        "kaist-ai-bio/kfold-assets",
+        "kaist-ai-bio/kfold",
     ):
         try:
             snapshot_download(
                 repo_id,
-                revision="v1.0.0" if repo_id == "SeonghwanSeo/kfold" else None,
                 cache_dir=cache_dir,
                 tqdm_class=DownloadProgress,
             )

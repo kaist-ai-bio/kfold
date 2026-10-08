@@ -5,10 +5,12 @@ Through an apo-to-holo diffusion bridge, it models how unbound molecules assembl
 
 ![K-Fold assembles unbound component structures into a bound complex.](docs/images/figure_1.jpg)
 
+Preprint will be available soon.
+
 ## Model parameters
 
 K-Fold uses pretrained [AtlasLM](https://github.com/SeonghwanSeo/atlasfold) for protein sequence representations and [TriProRep](https://github.com/hsjang0/TriProRep) for protein structure representations.
-The parameters for these models and K-Fold are downloaded automatically on first use from [Hugging Face](https://huggingface.co/collections/SeonghwanSeo/k-fold).
+The parameters for these models and K-Fold are downloaded automatically on first use from [Hugging Face](https://huggingface.co/collections/kaist-ai-bio/k-fold).
 
 ## Installation
 
@@ -23,7 +25,7 @@ pip install kfold
 Or install from source:
 
 ```bash
-git clone https://github.com/SeonghwanSeo/kfold.git
+git clone https://github.com/kaist-ai-bio/kfold.git
 cd kfold
 pip install -e .
 ```
@@ -76,12 +78,12 @@ K-Fold was developed at KAIST as part of the K-Fold initiative supported by the 
 Members of Team KAIST are listed below (alphabetical order):
 
 - **Project management:** Hyeongwoo Kim<sup>3,†</sup>
+- **Engineering lead:** Seonghwan Seo<sup>3,†</sup>
 - **K-Fold architecture:** Seokhyun Moon<sup>3,†</sup>, Jun Hyeong Kim<sup>3</sup>, Shinwoo Kim<sup>3</sup>, Minha Park<sup>3</sup>, Jisu Seo<sup>3</sup>, Mingyeong Shin<sup>3</sup>, Wonho Zhung<sup>3</sup>
 - **Protein structure encoder:** Hyosoon Jang<sup>1,†</sup>, Taewon Kim<sup>1,†</sup>, Hyunjin Seo<sup>1</sup>
 - **RNA sequence encoder:** Dongki Kim<sup>1,†</sup>, Jun Hyeong Kim<sup>1,†</sup>, Jinheon Baek<sup>1</sup>, Jaehyeong Jo<sup>1</sup>
 - **Training data preparation:** Yeongnam Bae<sup>2,†</sup>, Woosung Jeon<sup>2,†</sup>, Joongwon Lee<sup>3,†</sup>, Junyup Lee<sup>2,†</sup>, Yunsu Shin<sup>2,†</sup>, Eugene Choi<sup>2</sup>, Jeong Hun Choi<sup>2</sup>, Hyeongyu Han<sup>2</sup>, Calvin Samuel<sup>2</sup>
 - **Kernel optimization:** Youngchan Kim<sup>4</sup>
-- **Engineering lead:** Seonghwan Seo<sup>3,†</sup>
 - **Supervision:** Sungsoo Ahn<sup>1</sup>, Dongsu Han<sup>4,1</sup>, Sung Ju Hwang<sup>1</sup>, Ho Min Kim<sup>2</sup>, Woo Youn Kim<sup>3</sup>, Gyu Rie Lee<sup>2</sup>, Byung-Ha Oh<sup>2</sup>
 
 <sup>†</sup> Core contributor; <sup>1</sup> KAIST AI; <sup>2</sup> KAIST Biological Sciences; <sup>3</sup> KAIST Chemistry; <sup>4</sup> KAIST Electrical Engineering.

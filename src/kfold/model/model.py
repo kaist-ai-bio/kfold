@@ -45,7 +45,7 @@ from kfold.utils.runtime import select_kernel_backend
 logger = logging.getLogger(__name__)
 
 
-MODEL_REPO_ID = "SeonghwanSeo/kfold"
+MODEL_REPO_ID = "kaist-ai-bio/kfold"
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -586,7 +586,6 @@ class KFold(torch.nn.Module):
                 snapshot_download(
                     repo_id,
                     repo_type="model",
-                    revision="v1.0.0" if repo_id == MODEL_REPO_ID else None,
                     cache_dir=cache_dir,
                 )
             )

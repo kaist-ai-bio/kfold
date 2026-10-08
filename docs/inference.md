@@ -27,7 +27,7 @@ pip install kfold
 Or install from source:
 
 ```bash
-git clone https://github.com/SeonghwanSeo/kfold.git
+git clone https://github.com/kaist-ai-bio/kfold.git
 cd kfold
 pip install -e .
 ```
