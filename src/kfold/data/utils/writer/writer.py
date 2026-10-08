@@ -17,6 +17,7 @@ from textwrap import wrap
 
 import gemmi
 import numpy as np
+from atlasfold import __version__ as atlasfold_version
 
 from kfold import __version__
 from kfold.data.types.structure import RefStructure
@@ -77,7 +78,7 @@ def _make_prediction_mmcif_block(struct: RefStructure) -> gemmi.cif.Block:
             "package",
             gemmi.cif.quote("Apo structure and prior candidate generation"),
             gemmi.cif.quote("model building"),
-            "1.0.2",
+            gemmi.cif.quote(atlasfold_version),
         ]
     )
     return make_mmcif_block(struct, block=block)
