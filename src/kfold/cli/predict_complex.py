@@ -313,6 +313,7 @@ def _worker(
                 seed=seed,
                 num_samples=args.num_samples,
                 num_recycles=args.num_recycles,
+                max_apo_combinations=args.max_apo_combinations,
                 num_steps=args.num_steps,
                 return_trajectory=args.save_trajectory,
                 return_embeddings=args.save_embeddings,

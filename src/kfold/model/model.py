@@ -38,6 +38,11 @@ from kfold.model.modules import (
     score_model,
     tri_stack,
 )
+from kfold.model.modules.apo_repr_mix import (
+    ApoRepresentationMixers,
+    ApoReprMixConfig,
+    mix_representations,
+)
 from kfold.model.primitives import LayerNorm, Linear, LinearNoBias
 from kfold.utils.config import resolve_config
 from kfold.utils.runtime import select_kernel_backend
@@ -83,6 +88,8 @@ class KFoldConfig:
     distogram_head: distogram_head.DistogramHead.Config
     confidence_head: confidence_head.ConfidenceHead.Config
     patch_pair_geometry: patch_geometry.PatchPairGeometryHead.Config | None
+
+    apo_repr_mix: ApoReprMixConfig = dataclasses.field(default_factory=ApoReprMixConfig)
 
     # For training
     diffusion_conditioning_drop_rate: float = 0.0
@@ -148,6 +155,16 @@ class KFold(torch.nn.Module):
         self.channel_z: int = config.channel_z
         self.lm_dropout: float = config.lm_dropout
         self.cpu_offload: bool = False
+        self.apo_repr_mix_config = resolve_config(
+            ApoReprMixConfig, getattr(config, "apo_repr_mix", None)
+        )
+        self.apo_repr_mix = (
+            ApoRepresentationMixers(
+                self.channel_z, self.channel_s, self.apo_repr_mix_config
+            )
+            if self.apo_repr_mix_config.enabled
+            else None
+        )
 
         self.trunk_config = resolve_config(TrunkConfig, config.trunk)
         self.parcae_config = resolve_config(ParcaeConfig, config.parcae)
@@ -301,6 +318,7 @@ class KFold(torch.nn.Module):
         return_embeddings: bool = False,
         return_distogram: bool = False,
         return_traj: bool = False,
+        max_apo_combinations: int | None = None,
     ) -> dict[str, dict[str, torch.Tensor]]:
         """Run KFold structure prediction from a fully prepared input.
 
@@ -347,6 +365,7 @@ class KFold(torch.nn.Module):
             return_embeddings=return_embeddings,
             return_distogram=return_distogram,
             return_traj=return_traj,
+            max_apo_combinations=max_apo_combinations,
         )
 
         # remove batch dimension
@@ -366,6 +385,7 @@ class KFold(torch.nn.Module):
         num_steps: int = 100,
         num_samples: int = 5,
         return_embeddings: bool = False,
+        max_apo_combinations: int | None = None,
         return_distogram: bool = False,
         return_traj: bool = False,
     ) -> dict[str, dict[str, torch.Tensor]]:
@@ -408,6 +428,11 @@ class KFold(torch.nn.Module):
         # Trunk with recycling
         s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles)
         z = z.float()
+        z_conf, lm_conf = z, s_lm
+        if self.apo_repr_mix is not None:
+            z, z_conf, lm_conf = mix_representations(
+                self, f_input, s_inputs, s_lm, z, num_recycles, max_apo_combinations
+            )
 
         if return_embeddings:
             dict_out["trunk"] = {
@@ -436,8 +461,8 @@ class KFold(torch.nn.Module):
         dict_out["confidence"] = self.confidence_head(
             f_input,
             s_inputs,
-            s_lm,
-            z,
+            lm_conf,
+            z_conf,
             coords,
         )
 

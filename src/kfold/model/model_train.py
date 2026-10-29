@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 from kfold.data.types.model_input import FoldingInput
 from kfold.model.model import KFold, KFoldConfig
+from kfold.model.modules.apo_repr_mix import mix_representations
 from kfold.model.modules.ecsi import ECSISOARConfig
 from kfold.utils.runtime import is_cuequivariance_installed
 
@@ -314,6 +315,11 @@ class KFoldForTrain(KFold):
 
         s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles, grad_recurrence_steps)
         z = z.float()
+        z_conf, lm_conf = z, s_lm
+        if self.apo_repr_mix is not None:
+            z, z_conf, lm_conf = mix_representations(
+                self, f_input, s_inputs, s_lm, z, num_recycles, training=self.training
+            )
 
         if train_trunk:
             # Distogram head
@@ -323,7 +329,7 @@ class KFoldForTrain(KFold):
                 if patch_geometry_out:
                     dict_out["patch_geometry"] = patch_geometry_out
 
-        if train_diffusion_head:
+        if train_diffusion_head or self.apo_repr_mix is not None:
             # Diffusion head
             _z = z
             drop_rate = self.config.diffusion_conditioning_drop_rate
@@ -342,7 +348,7 @@ class KFoldForTrain(KFold):
                     soar_config,
                 )
 
-        if train_confidence_module:
+        if train_confidence_module or self.apo_repr_mix is not None:
             # Stop gradients to input features and trunk outputs.
             # Sample structures with diffusion mini-rollout.
             with torch.no_grad(), torch.autocast(device.type, enabled=False):
@@ -357,8 +363,8 @@ class KFoldForTrain(KFold):
                 "coordinates": coordinates,
             }
             _s_inputs = s_inputs.detach()
-            _s_lm = s_lm.detach()
-            _z = z.detach()
+            _s_lm = lm_conf if self.apo_repr_mix is not None else s_lm.detach()
+            _z = z_conf if self.apo_repr_mix is not None else z.detach()
 
             # Randomly drop conditioning information for confidence head.
             drop_rate = self.config.confidence_conditioning_drop_rate
@@ -421,6 +427,11 @@ class KFoldForTrain(KFold):
         # Trunk with recycling
         s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles)
         z = z.float()
+        z_conf, lm_conf = z, s_lm
+        if self.apo_repr_mix is not None:
+            z, z_conf, lm_conf = mix_representations(
+                self, f_input, s_inputs, s_lm, z, num_recycles, training=self.training
+            )
 
         # Distogram head
         dict_out["distogram"] = self.distogram_head.forward_inference(f_input, z)
@@ -441,8 +452,8 @@ class KFoldForTrain(KFold):
         dict_out["confidence"] = self.confidence_head(
             f_input,
             s_inputs,
-            s_lm,
-            z,
+            lm_conf,
+            z_conf,
             coords,
         )
         # Remove batch dimension from outputs for validation

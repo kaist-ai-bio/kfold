@@ -27,6 +27,12 @@ logger = logging.getLogger("cli")
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     # Stage selection, query paths, and generation seeds.
     parser.add_argument(
+        "--max-apo-combinations",
+        type=int,
+        default=None,
+        help="Maximum complex apo combinations for a representation-mixing checkpoint.",
+    )
+    parser.add_argument(
         "--stage",
         choices=("all", "apo", "complex"),
         default="all",

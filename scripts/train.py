@@ -287,8 +287,32 @@ def fit_with_initialized_optimizer_state(
                 list(init_from_ema),
             )
 
-    model_module.load_state_dict(state_dict, strict=True)
-    model_module.on_load_checkpoint(checkpoint)
+    if model_module.train_apo_repr_mix:
+        prefix = "model.apo_repr_mix."
+        current = model_module.state_dict()
+        expected = {k for k in current if k.startswith(prefix)}
+        present = {k for k in state_dict if k.startswith(prefix)}
+        if present and present != expected:
+            raise ValueError(
+                "Partial apo mixer checkpoint; refusing silent initialization"
+            )
+        if not present:
+            # Only brand-new mixer tensors may be absent from a base checkpoint.
+            state_dict = dict(state_dict)
+            state_dict.update({k: current[k] for k in expected})
+        model_module.load_state_dict(state_dict, strict=True)
+        # A new optimizer must start EMA from the actual initialized weights,
+        # not from stale pre-load values or differently selected legacy EMA groups.
+        from kfold.training.optim.ema import ExponentialMovingAverage
+
+        model_module.ema = ExponentialMovingAverage(
+            model_module.model,
+            model_module.optimizer_config.ema_decay,
+            model_module.submodules_to_ignore_for_ema,
+        )
+    else:
+        model_module.load_state_dict(state_dict, strict=True)
+        model_module.on_load_checkpoint(checkpoint)
     if load_global_step:
         model_module.last_lr_step = checkpoint["global_step"]
         trainer.fit_loop.load_state_dict(checkpoint["loops"]["fit_loop"])

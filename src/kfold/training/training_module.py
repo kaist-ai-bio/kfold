@@ -207,6 +207,8 @@ class KFoldTrainingModule(pl.LightningModule):
         model_config: KFoldConfig = self.global_config.model
         self.model = KFoldForTrain(model_config)
 
+        self.train_apo_repr_mix = self.model.apo_repr_mix is not None
+
         # Compile
         if self.compile_config.enabled:
             self.model.do_compile(
@@ -280,6 +282,25 @@ class KFoldTrainingModule(pl.LightningModule):
 
     def freeze_submodules(self):
         """Freeze submodules based on the training configuration."""
+        if self.train_apo_repr_mix:
+            if (
+                self.train_trunk
+                or self.train_diffusion_head
+                or self.train_confidence_head
+            ):
+                raise ValueError(
+                    "Apo mixing trains only the three mixers; "
+                    "disable existing train flags."
+                )
+            self.model.requires_grad_(False)
+            self.model.apo_repr_mix.requires_grad_(True)
+            # Keep frozen heads in training mode: inference paths use in-place ops
+            # that are not safe when gradients must reach their inputs.
+            self.frozen_modules = (
+                self.model.get_pretrained_module_names()
+                + self.model.get_trunk_module_names()
+            )
+            return
         # FIXME: (SeonghwanSeo) I did not test this function yet.
         # This is required when only selected model components are trained.
 
@@ -475,7 +496,7 @@ class KFoldTrainingModule(pl.LightningModule):
             distogram_loss = 0.0
             patch_geometry_loss, patch_geometry_metrics = 0.0, {}
 
-        if self.train_diffusion_head:
+        if self.train_diffusion_head or self.train_apo_repr_mix:
             diffusion_out = model_output["diffusion"]
             diffusion_loss, diffusion_metrics = self.compute_diffusion_loss(
                 x_pred=diffusion_out["x_0_hat"],
@@ -493,7 +514,7 @@ class KFoldTrainingModule(pl.LightningModule):
         else:
             diffusion_loss, diffusion_metrics = 0.0, {}
 
-        if self.train_confidence_head:
+        if self.train_confidence_head or self.train_apo_repr_mix:
             x_pred = model_output["sample"]["coordinates"]
             confidence_loss_mask = torch.tensor(
                 [info["train_confidence_head"] for info in struct_info],
@@ -645,7 +666,7 @@ class KFoldTrainingModule(pl.LightningModule):
 
             # Select the best sample based on global PDE score.
             top1_index = None  # Use oracle sample.
-            if self.train_confidence_head:
+            if self.train_confidence_head or self.train_apo_repr_mix:
                 pde = confidence_metrics.compute_pde(
                     confidence_out["pde_logits"],
                     confidence_out["pde_bin_centers"],
@@ -925,7 +946,7 @@ class KFoldTrainingModule(pl.LightningModule):
                 prog_bar=False,
             )
 
-        if self.train_diffusion_head:
+        if self.train_diffusion_head or self.train_apo_repr_mix:
             self.log(
                 "monitor/grad_norm_score_model",
                 gradient_norm(model.score_model),
@@ -939,7 +960,7 @@ class KFoldTrainingModule(pl.LightningModule):
                 prog_bar=False,
             )
 
-        if self.train_confidence_head:
+        if self.train_confidence_head or self.train_apo_repr_mix:
             self.log(
                 "monitor/grad_norm_confidence_head",
                 gradient_norm(model.confidence_head),

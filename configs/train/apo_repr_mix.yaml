@@ -1,0 +1,32 @@
+# Initialize from an existing full checkpoint; only three new mixers are trainable.
+_yaml_: stage_3.yaml
+model:
+  apo_repr_mix:
+    enabled: true
+    hidden: 512
+    chunk_size: 1024
+    max_combinations: 3
+    train_max_apo: 3
+train:
+  name: apo-repr-mix
+  load_opt_state: false
+  load_global_step: false
+  init_from_ema: ['trunk']
+  compile:
+    enabled: false
+  training:
+    train_trunk: false
+    train_diffusion_head: false
+    train_confidence_head: false
+    diffusion_batch_size: 4
+    soar:
+      enabled: false
+  optimizer:
+    max_lr: 0.0001
+    lr_warmup_no_steps: 100
+    validate_with_ema_after_n_steps: 1000
+  data:
+    max_apo: 3
+    safe_load: false
+  trainer:
+    gradient_clip_val: 1.0
