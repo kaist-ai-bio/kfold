@@ -1,0 +1,14 @@
+_yaml_: apo_repr_mix.yaml
+train:
+  name: apo-repr-mix-5k
+  trainer:
+    max_steps: 5000
+    max_time: '00:23:00:00'
+    limit_val_batches: 0
+    checkpoint_every_n_train_steps: 500
+    checkpoint_save_last: true
+    log_every_n_steps: 10
+  training:
+    parcae:
+      min_recycles: 1
+      max_recycles: 1

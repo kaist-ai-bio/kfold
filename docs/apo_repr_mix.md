@@ -115,3 +115,24 @@ Small per-rank reports are retained in the project operations checkout under
 
 This verifies distributed execution with the settings above, not convergence,
 accuracy improvement, compiled execution, or long-run training stability.
+
+## 5,000-update experiment
+
+`configs/train/apo_repr_mix_5k.yaml` and
+`scripts/slurm/hangang_apo_repr_mix_5k.sbatch` extend the verified settings to
+5,000 optimizer updates, batch 1 per GPU / global batch 8, with no accumulation.
+The initial full 71k checkpoint is reinitialized using the policy above; the
+ten-update diagnostic checkpoint is not the experiment starting point. The
+existing losses, LR 1e-4 with 100-update warmup, three branches, frozen heads,
+one recycle, diffusion batch 4 and uncompiled runtime are retained. This samples
+approximately 40,000 complex examples with replacement, not 40,000 unique entries.
+Held-out validation is disabled for this training run.
+
+Checkpoints are saved every 500 updates with full optimizer/EMA state. The audit
+runner checks the optimizer allowlist, finite loss/gradients, frozen parameter
+versions, and writes per-rank progress. At graceful completion or the 23-hour
+training timer it saves `checkpoints/progress.ckpt`. If the target has not been
+reached, the batch script submits a continuation using full checkpoint resume;
+at most three 24-hour segments are permitted. Every segment has a distinct
+rendezvous/runtime directory. Automatic continuation is limited to a successful
+timer stop, not an arbitrary crash. The cumulative target remains 5,000 updates.

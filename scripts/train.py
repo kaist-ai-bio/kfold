@@ -210,6 +210,11 @@ def build_trainer(cfg, debug: bool = False) -> pl.Trainer:
     callbacks.append(tqdm_callback)
 
     if not debug and pl_trainer_cfg.enable_checkpointing:
+        checkpoint_options = dict(
+            every_n_train_steps=pl_trainer_cfg.get("checkpoint_every_n_train_steps"),
+            save_last=pl_trainer_cfg.get("checkpoint_save_last", False),
+            dirpath=pl_trainer_cfg.get("checkpoint_dir"),
+        )
         if pl_trainer_cfg.limit_val_batches == 0:
             # Save checkpoint only based on training loss
             checkpoint_callback = pl_callbacks.ModelCheckpoint(
@@ -218,6 +223,7 @@ def build_trainer(cfg, debug: bool = False) -> pl.Trainer:
                 filename="epoch{epoch:04d}_step{step:08d}_loss{train/loss:.4f}",
                 mode="min",
                 auto_insert_metric_name=False,
+                **checkpoint_options,
             )
         else:
             checkpoint_callback = pl_callbacks.ModelCheckpoint(
@@ -226,6 +232,7 @@ def build_trainer(cfg, debug: bool = False) -> pl.Trainer:
                 filename="epoch{epoch:04d}_step{step:08d}_wlddt{rcsb-val/monitor/weighted_lddt:.4f}",
                 mode="max",
                 auto_insert_metric_name=False,
+                **checkpoint_options,
             )
         callbacks.append(checkpoint_callback)
 
@@ -239,6 +246,8 @@ def build_trainer(cfg, debug: bool = False) -> pl.Trainer:
         num_nodes=pl_trainer_cfg.num_nodes,
         precision=pl_trainer_cfg.precision,
         max_epochs=pl_trainer_cfg.max_epochs,
+        max_steps=pl_trainer_cfg.get("max_steps", -1),
+        max_time=pl_trainer_cfg.get("max_time"),
         limit_train_batches=pl_trainer_cfg.limit_train_batches,
         limit_val_batches=pl_trainer_cfg.limit_val_batches,
         num_sanity_val_steps=(
