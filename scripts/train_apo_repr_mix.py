@@ -8,6 +8,16 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 import torch
+from lightning.pytorch.callbacks import Timer
+
+
+class SegmentTimer(Timer):
+    """A fresh walltime budget per allocation, including after a full-state resume."""
+
+    def load_state_dict(self, state_dict):
+        # Lightning's default Timer restores elapsed time from the prior job.
+        # Model/optimizer/scheduler state resumes; allocation walltime starts over.
+        pass
 
 
 class MixerTrainingAudit(pl.Callback):
@@ -97,6 +107,11 @@ def main():
 
     def build(cfg, debug=False):
         trainer = original(cfg, debug)
+        trainer.callbacks = [
+            SegmentTimer(duration=cfg.train.trainer.max_time)
+            if isinstance(callback, Timer) else callback
+            for callback in trainer.callbacks
+        ]
         trainer.callbacks.append(MixerTrainingAudit())
         return trainer
 
