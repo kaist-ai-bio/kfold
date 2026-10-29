@@ -89,3 +89,29 @@ loss/gradients, the optimizer parameter allowlist, all three mixers changing,
 frozen parameters receiving no gradients or in-place changes, and checkpoint
 contents. Per-rank evidence is written under the job's `validation/` directory.
 Successful unit tests or submission alone are not distributed-training success.
+
+### Verified run (2026-10-29)
+
+Hangang job `1176574`, source `c91d1715`, completed with exit code `0:0` on
+`node0689` and `node0693`. All eight ranks completed ten optimizer updates on
+real training examples. All three mixers received nonzero gradients and changed;
+all existing parameters remained frozen and unchanged. The optimizer contains
+only the 2,628,992 mixer parameters. Peak allocated memory was 42.11 GiB per GPU.
+The five focused unit tests also passed.
+
+Zero-initialized mixer outputs matched baseline head inputs bitwise. Full GPU
+forward outputs were checked against separately measured repeated-baseline
+numerical jitter, rather than claimed to be bitwise reproducible. The frozen
+diffusion bias-only SDPA backward path required a local query gradient leaf to
+allocate the efficient-attention backward workspace; no pretrained parameter is
+unfrozen. Its GPU gradient regression against math SDPA passed.
+
+The saved checkpoint was read back and mixer tensors matched exactly; optimizer
+and EMA states were present. It remains on Hangang at
+`/scratch/t530a05/kfold/experiments/apo-repr-mix-8gpu-1176574/validation/validated.ckpt`.
+Small per-rank reports are retained in the project operations checkout under
+`outputs/remote/Hangang/apo-repr-mix-20261029/`; the run receipt is
+`ops/runs/apo-repr-mix-20261029.json`.
+
+This verifies distributed execution with the settings above, not convergence,
+accuracy improvement, compiled execution, or long-run training stability.

@@ -197,8 +197,9 @@ class MixerContract(pl.Callback):
 
 def validate_bias_only_attention():
     """Small GPU regression for the gradient path used by a frozen decoder."""
-    from kfold.model.primitives.attention import sdpa_attention_pair_bias
     from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    from kfold.model.primitives.attention import sdpa_attention_pair_bias
 
     torch.cuda.set_device(int(os.environ.get("SLURM_LOCALID", "0")))
     device = torch.device("cuda", torch.cuda.current_device())
