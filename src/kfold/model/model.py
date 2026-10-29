@@ -385,9 +385,9 @@ class KFold(torch.nn.Module):
         num_steps: int = 100,
         num_samples: int = 5,
         return_embeddings: bool = False,
-        max_apo_combinations: int | None = None,
         return_distogram: bool = False,
         return_traj: bool = False,
+        max_apo_combinations: int | None = None,
     ) -> dict[str, dict[str, torch.Tensor]]:
         """Forward pass of KFold model for model training.
 

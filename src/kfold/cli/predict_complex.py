@@ -262,6 +262,7 @@ def _worker(
         logger.info("Loading K-Fold model and runner.")
         init_start = perf_counter()
         model = KFold.from_pretrained(
+            args.model_path,
             device=torch.device("cuda", gpu_id),
             cache_dir=args.cache_dir,
             use_struct_encoder=not args.disable_struct_encoder,

@@ -105,6 +105,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=100,
         help="Number of diffusion steps (default: 100).",
     )
+    parser.add_argument(
+        "--model-path",
+        default="kaist-ai-bio/kfold",
+        help="Model ID or local directory with config.yaml and weights/kfold.pth.",
+    )
     # Devices, model components, and model cache.
     parser.add_argument(
         "--kernel",
@@ -238,6 +243,8 @@ def _load_queries(args: argparse.Namespace) -> list[Query]:
     for name in ("num_apos", "num_shared_apos"):
         if not 1 <= getattr(args, name) <= 5:
             raise ValueError(f"--{name.replace('_', '-')} must be between 1 and 5.")
+    if args.max_apo_combinations is not None and args.max_apo_combinations < 1:
+        raise ValueError("--max-apo-combinations must be positive")
     for name in ("num_samples", "num_recycles", "num_steps"):
         if getattr(args, name) < 1:
             raise ValueError(f"--{name.replace('_', '-')} must be positive.")

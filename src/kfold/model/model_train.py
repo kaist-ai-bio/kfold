@@ -203,7 +203,7 @@ class KFoldForTrain(KFold):
             with torch.set_grad_enabled(enable_grad):
                 if enable_grad and torch.is_autocast_enabled():
                     torch.clear_autocast_cache()
-                _z_lm = F.dropout(z_lm, p=self.dropout, training=True)
+                _z_lm = F.dropout(z_lm, p=self.lm_dropout, training=True)
                 u_t = z_inputs + lm_stack(_z_lm, pair_mask)
                 # Parcae recurrence: z_in = a * z_t + B_bar LN(u_t), followed
                 # by the pair folding trunk as the nonlinear recurrent update.
