@@ -632,6 +632,9 @@ class KFoldRunner:
                 "num_samples": num_samples,
                 "num_recycles": num_recycles,
                 "max_apo_combinations": max_apo_combinations,
+                "apo_mix_assignments": getattr(
+                    self.model, "last_apo_mix_assignments", None
+                ),
                 "num_steps": num_steps,
                 "use_struct_encoder": self.model.prot_struct_encoder is not None,
                 "use_rna_encoder": self.model.rna_seq_encoder is not None,

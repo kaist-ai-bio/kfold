@@ -151,6 +151,8 @@ def run(args: argparse.Namespace, queries: list[Query]) -> None:
             "seeds": args.seeds,
             "num_samples": args.num_samples,
             "num_recycles": args.num_recycles,
+            "max_apo_combinations": args.max_apo_combinations,
+            "model_path": args.model_path,
             "num_steps": args.num_steps,
             "use_struct_encoder": not args.disable_struct_encoder,
             "use_rna_encoder": not args.disable_rna_encoder,

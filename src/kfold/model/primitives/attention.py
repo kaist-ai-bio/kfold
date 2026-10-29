@@ -321,6 +321,15 @@ def sdpa_attention_pair_bias(
     """
     bias = pair_bias.to(q.dtype).masked_fill(~mask.bool()[..., None, None, :], -inf)
     bias = bias.expand(*q.shape[:-2], q.shape[-2], k.shape[-2])
+    # PyTorch efficient SDPA can omit its backward LSE workspace when only the
+    # additive bias requires grad (frozen diffusion, trainable conditioning).
+    # A local Q leaf requests that workspace without unfreezing model parameters.
+    if (
+        torch.is_grad_enabled()
+        and bias.requires_grad
+        and not any(tensor.requires_grad for tensor in (q, k, v))
+    ):
+        q = q.detach().requires_grad_(True)
     # Merge sample and local-window axes so fused SDPA receives rank-four inputs.
     attention = F.scaled_dot_product_attention(
         q.reshape(-1, *q.shape[-3:]),

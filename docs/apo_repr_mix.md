@@ -45,7 +45,8 @@ caps the number of complex branches. The CLI exposes `--max-apo-combinations`;
 `apo_repr_mix.max_combinations` is the default when no override is supplied.
 A cap is not a promise that this many unique combinations exist. Counts above
 three are supported mechanically but require separate generalization evaluation.
-Assignments are available as `model.last_apo_mix_assignments` for provenance.
+Assignments are available as `model.last_apo_mix_assignments` and in prediction
+settings as `apo_mix_assignments` for provenance.
 
 ## Initialize and resume
 
@@ -82,7 +83,8 @@ two nodes/eight GPUs for a bounded ten-update real-data check. It uses crop 768,
 These are validation settings, not a production throughput benchmark. No other
 job is modified. `KFOLD_EXPECTED_COMMIT` must match the clean checkout.
 
-The validation callback checks initial legacy/mixed forward equality, finite
+The validation callback checks exact zero-residual head-input identity and
+legacy/mixed output differences relative to repeated legacy GPU execution, finite
 loss/gradients, the optimizer parameter allowlist, all three mixers changing,
 frozen parameters receiving no gradients or in-place changes, and checkpoint
 contents. Per-rank evidence is written under the job's `validation/` directory.

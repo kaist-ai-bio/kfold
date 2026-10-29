@@ -195,7 +195,57 @@ class MixerContract(pl.Callback):
         )
 
 
+def validate_bias_only_attention():
+    """Small GPU regression for the gradient path used by a frozen decoder."""
+    from kfold.model.primitives.attention import sdpa_attention_pair_bias
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    torch.cuda.set_device(int(os.environ.get("SLURM_LOCALID", "0")))
+    device = torch.device("cuda", torch.cuda.current_device())
+    torch.manual_seed(123)
+    shape = (2, 4, 32, 16)
+    q, k, v = [torch.randn(shape, device=device, dtype=torch.bfloat16) for _ in range(3)]
+    bias = torch.randn(
+        2, 4, 32, 32, device=device, dtype=torch.bfloat16, requires_grad=True
+    )
+    x = torch.randn(2, 32, 64, device=device, dtype=torch.bfloat16)
+    w = torch.eye(64, device=device, dtype=torch.bfloat16)
+    args = dict(
+        s=x,
+        q=q,
+        k=k,
+        v=v,
+        mask=torch.ones(2, 32, device=device, dtype=torch.bool),
+        w_proj_g=w,
+        w_proj_o=w,
+        b_proj_g=None,
+        b_proj_o=None,
+    )
+    with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+        out = sdpa_attention_pair_bias(pair_bias=bias, **args)
+    out.float().square().mean().backward()
+    actual = bias.grad.detach().clone()
+    reference_bias = bias.detach().clone().requires_grad_(True)
+    with sdpa_kernel(SDPBackend.MATH):
+        reference = sdpa_attention_pair_bias(pair_bias=reference_bias, **args)
+    reference.float().square().mean().backward()
+    assert torch.isfinite(actual).all() and actual.abs().sum() > 0
+    torch.testing.assert_close(actual, reference_bias.grad, rtol=0.04, atol=2e-5)
+    root = Path(os.environ["RUN_ROOT"]) / "attention-regression"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"rank-{os.environ.get('SLURM_PROCID', '0')}.json").write_text(
+        json.dumps(
+            dict(
+                passed=True,
+                max_gradient_error=(actual - reference_bias.grad).abs().max().item(),
+            )
+        )
+        + "\n"
+    )
+
+
 def main():
+    validate_bias_only_attention()
     spec = importlib.util.spec_from_file_location(
         "kfold_train_script", Path(__file__).with_name("train.py")
     )
