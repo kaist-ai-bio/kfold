@@ -114,3 +114,28 @@ def test_branch_slicing_preserves_correlated_groups_and_prior():
         assert torch.equal(tok, branch.atom.apo_coords[0, :, 0, 0])
         assert branch.atom.prior_coords is atom.prior_coords
     assert len({row[10] for row in assignments[0]}) == 3
+
+
+def test_extra_branches_preserve_rng_and_identity(monkeypatch):
+    from types import SimpleNamespace
+
+    cfg = m.ApoReprMixConfig(hidden=8, chunk_size=3, enabled=True)
+    net = m.ApoRepresentationMixers(4, 3, cfg)
+    base_z = torch.randn(1, 2, 2, 4)
+    base_s = torch.randn(1, 2, 3)
+    f = SimpleNamespace(device=torch.device("cpu"))
+
+    def branches(*args):
+        torch.rand(5)
+        return [0, 1, 2], torch.ones(1, 3, dtype=torch.bool), [{0: 0}, {0: 1}, {0: 2}]
+
+    monkeypatch.setattr(m, "make_apo_branches", branches)
+
+    def trunk(branch, recycles):
+        return None, torch.randn_like(base_s), torch.randn_like(base_z)
+
+    model = SimpleNamespace(apo_repr_mix_config=cfg, apo_repr_mix=net, run_trunk=trunk)
+    before = torch.get_rng_state().clone()
+    z, zc, s = m.mix_representations(model, f, None, base_s, base_z, 1)
+    assert torch.equal(before, torch.get_rng_state())
+    assert torch.equal(z, base_z) and torch.equal(zc, base_z) and torch.equal(s, base_s)

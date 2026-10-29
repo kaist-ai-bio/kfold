@@ -121,7 +121,7 @@ def make_apo_branches(f, cap, train_max_apo=None):
     Chemical reference features, crop, atom layout, and ECSI priors are untouched.
     Returned validity masks exclude repeated padding branches in mixed-size batches.
     """
-    seed = int(torch.randint(0, 2**31 - 1, ()).item())
+    seed = int(torch.randint(0, 2**31 - 1, (), device=f.device).item())
     rng = random.Random(seed)
     assignments = []
     for b in range(f.batch_size):
@@ -147,7 +147,7 @@ def make_apo_branches(f, cap, train_max_apo=None):
         token_indices = torch.zeros_like(f.token.apo_uid)
         seq_indices = torch.zeros_like(f.sequence.asym_id)
         for b, rows in enumerate(assignments):
-            valid[b, k] = k < len(rows)
+            valid[b, k] = k < len(rows) and bool(rows[min(k, len(rows) - 1)])
             row = rows[min(k, len(rows) - 1)]
             for group, index in row.items():
                 member = f.token.apo_uid[b] == group

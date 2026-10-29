@@ -64,26 +64,59 @@ class MixerContract(pl.Callback):
                 train_diffusion_head=True,
                 train_confidence_module=True,
             )
-            with (
-                torch.random.fork_rng(devices=[module.device.index]),
-                torch.no_grad(),
-                torch.autocast("cuda", dtype=torch.bfloat16),
-            ):
-                model.apo_repr_mix = None
-                try:
-                    with torch.random.fork_rng(devices=[module.device.index]):
-                        legacy = model.forward_train(batch[0], **kwargs)
-                finally:
-                    model.apo_repr_mix = mixers
-                mixed = model.forward_train(batch[0], **kwargs)
+            identity_checks = []
+
+            def check_mixer_identity(_module, inputs, outputs):
+                for base, output in zip(
+                    (inputs[0], inputs[0], inputs[1]), outputs, strict=True
+                ):
+                    assert torch.equal(base, output), (
+                        "Zero residual changed head conditioning"
+                    )
+                identity_checks.append(True)
+
+            hook = mixers.register_forward_hook(check_mixer_identity)
+            try:
+                with (
+                    torch.random.fork_rng(devices=[module.device.index]),
+                    torch.no_grad(),
+                    torch.autocast("cuda", dtype=torch.bfloat16),
+                ):
+                    model.apo_repr_mix = None
+                    try:
+                        with torch.random.fork_rng(devices=[module.device.index]):
+                            legacy = model.forward_train(batch[0], **kwargs)
+                        with torch.random.fork_rng(devices=[module.device.index]):
+                            repeat = model.forward_train(batch[0], **kwargs)
+                    finally:
+                        model.apo_repr_mix = mixers
+                    mixed = model.forward_train(batch[0], **kwargs)
+            finally:
+                hook.remove()
+            assert identity_checks
+            differences = {}
             for group in ("diffusion", "sample", "confidence"):
                 for name, tensor in legacy[group].items():
-                    if torch.is_tensor(tensor):
-                        torch.testing.assert_close(
-                            tensor, mixed[group][name], rtol=0, atol=0, equal_nan=True
-                        )
+                    if not torch.is_tensor(tensor):
+                        continue
+                    key = f"{group}.{name}"
+                    if not tensor.is_floating_point():
+                        assert torch.equal(tensor, mixed[group][name]), key
+                        continue
+                    jitter = (tensor - repeat[group][name]).abs().max().item()
+                    difference = (tensor - mixed[group][name]).abs().max().item()
+                    differences[key] = dict(
+                        legacy_repeat_max_abs=jitter, mixed_max_abs=difference
+                    )
+            (self.root / f"identity-rank-{self.rank}.json").write_text(
+                json.dumps(differences, indent=2) + "\n"
+            )
+            for key, values in differences.items():
+                assert (
+                    values["mixed_max_abs"] <= 5 * values["legacy_repeat_max_abs"] + 1e-3
+                ), (key, values)
             self.initial_identity = True
-            del legacy, mixed
+            del legacy, repeat, mixed
         self.batch_start = time.monotonic()
         self.ids = [x["id"] for x in batch[1]]
         self.supervised = [bool(x["train_confidence_head"]) for x in batch[1]]
