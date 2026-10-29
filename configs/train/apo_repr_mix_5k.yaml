@@ -1,6 +1,8 @@
 _yaml_: apo_repr_mix.yaml
 train:
-  name: apo-repr-mix-5k
+  name: apo-repr-mix-5k-b32
+  data:
+    train_batch_size: 2
   trainer:
     max_steps: 5000
     max_time: '00:23:00:00'

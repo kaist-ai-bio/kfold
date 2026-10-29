@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=apo-repr-mix-5k
+#SBATCH --job-name=apo-repr-mix-5k-b32
 #SBATCH --partition=normal
 #SBATCH --account=bs0247
 #SBATCH --comment="field=sciai;appl=pytorch-ddp"
-#SBATCH --nodes=2
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:4
@@ -31,12 +31,12 @@ export PYTHONUNBUFFERED=1 PYTHONFAULTHANDLER=1
 export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 
 cd "$CODE"
-test "${SLURM_JOB_NUM_NODES:?}" -eq 2
-test "${SLURM_NTASKS:?}" -eq 8
+test "${SLURM_JOB_NUM_NODES:?}" -eq 4
+test "${SLURM_NTASKS:?}" -eq 16
 test "$(git rev-parse HEAD)" = "${KFOLD_EXPECTED_COMMIT:?Set the reviewed commit before sbatch}"
 git diff --exit-code HEAD --
 
-export MIX_EXPERIMENT_ROOT=${MIX_EXPERIMENT_ROOT:-/scratch/t530a05/kfold/experiments/apo-repr-mix-5k-${SLURM_JOB_ID}}
+export MIX_EXPERIMENT_ROOT=${MIX_EXPERIMENT_ROOT:-/scratch/t530a05/kfold/experiments/apo-repr-mix-5k-b32-${SLURM_JOB_ID}}
 export MIX_SEGMENT=${MIX_SEGMENT:-1}
 export RUN_ROOT="$MIX_EXPERIMENT_ROOT/segments/$SLURM_JOB_ID"
 mkdir -p "$RUN_ROOT" "$MIX_EXPERIMENT_ROOT/checkpoints"
@@ -80,16 +80,16 @@ run_step() {
     ' kfold "$@"
 }
 
-# Verify all eight GPUs before loading the model.
+# Verify all sixteen GPUs before loading the model.
 run_step preflight- --preflight
 run_step '' -- scripts/train_apo_repr_mix.py \
     --config "$CONFIG" --out_dir "$RUN_ROOT" \
     --resume_from_checkpoint "$RESUME_CKPT" \
-    --override train.trainer.num_nodes=2 train.trainer.devices=4 \
+    --override train.trainer.num_nodes=4 train.trainer.devices=4 \
     train.trainer.strategy=ddp train.trainer.limit_val_batches=0 \
     train.trainer.enable_checkpointing=true \
     train.trainer.checkpoint_dir="$MIX_EXPERIMENT_ROOT/checkpoints" \
-    train.data.num_workers=2 train.data.train_batch_size=1 \
+    train.data.num_workers=2 train.data.train_batch_size=2 \
     train.data.data_root=/scratch/t530a05/kfold/data/kfold_data_archive/dataset \
     train.data.ccd_path=/scratch/t530a05/kfold/data/kfold_data_archive/ccd-train.pkl \
     train.training.parcae.min_recycles=1 train.training.parcae.max_recycles=1 \

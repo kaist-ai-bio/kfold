@@ -120,12 +120,13 @@ accuracy improvement, compiled execution, or long-run training stability.
 
 `configs/train/apo_repr_mix_5k.yaml` and
 `scripts/slurm/hangang_apo_repr_mix_5k.sbatch` extend the verified settings to
-5,000 optimizer updates, batch 1 per GPU / global batch 8, with no accumulation.
+5,000 optimizer updates, batch 2 per GPU / global batch 32 on 16 GPUs,
+with no accumulation.
 The initial full 71k checkpoint is reinitialized using the policy above; the
 ten-update diagnostic checkpoint is not the experiment starting point. The
 existing losses, LR 1e-4 with 100-update warmup, three branches, frozen heads,
 one recycle, diffusion batch 4 and uncompiled runtime are retained. This samples
-approximately 40,000 complex examples with replacement, not 40,000 unique entries.
+approximately 160,000 complex examples with replacement, not 160,000 unique entries.
 Held-out validation is disabled for this training run.
 
 Checkpoints are saved every 500 updates with full optimizer/EMA state. The audit
@@ -136,3 +137,7 @@ reached, the batch script submits a continuation using full checkpoint resume;
 at most three 24-hour segments are permitted. Every segment has a distinct
 rendezvous/runtime directory. Automatic continuation is limited to a successful
 timer stop, not an arbitrary crash. The cumulative target remains 5,000 updates.
+
+The initial batch-8 job `1176809` was superseded before its first 500-update
+checkpoint. The batch-32 experiment restarts from the original full 71k checkpoint
+to use one batch-size policy for all 5,000 updates. Learning rate remains 1e-4.
