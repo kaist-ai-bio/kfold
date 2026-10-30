@@ -41,7 +41,7 @@ export MIX_SEGMENT=${MIX_SEGMENT:-1}
 export RUN_ROOT="$MIX_EXPERIMENT_ROOT/segments/$SLURM_JOB_ID"
 mkdir -p "$RUN_ROOT" "$MIX_EXPERIMENT_ROOT/checkpoints"
 if [[ "$MIX_SEGMENT" -gt 1 ]]; then
-    test -r "$MIX_EXPERIMENT_ROOT/checkpoints/progress.ckpt"
+    test -r "${MIX_RECOVERY_CKPT:-$MIX_EXPERIMENT_ROOT/checkpoints/progress.ckpt}"
 fi
 export WANDB_MODE=disabled
 git rev-parse HEAD > "$RUN_ROOT/source-commit.txt"
@@ -52,10 +52,11 @@ export TRAIN_PYTHON=/scratch/t530a05/kfold/envs/train-cueq010/bin/python
 RESUME_CKPT=${RESUME_CKPT:-/scratch/t530a05/kfold/checkpoints/training-candidates/0908-72k/s3-71k.ckpt}
 RESUME_OVERRIDES=()
 if [[ "$MIX_SEGMENT" -gt 1 ]]; then
-    RESUME_CKPT="$MIX_EXPERIMENT_ROOT/checkpoints/progress.ckpt"
+    RESUME_CKPT=${MIX_RECOVERY_CKPT:-$MIX_EXPERIMENT_ROOT/checkpoints/progress.ckpt}
     RESUME_OVERRIDES=(train.load_opt_state=true)
 fi
 test -r "$RESUME_CKPT"
+printf '%s\n' "$RESUME_CKPT" > "$RUN_ROOT/resume-checkpoint.txt"
 
 # Rank zero may not live on the first host in SLURM_JOB_NODELIST. Discover the
 # actual step's rank-zero host for both the bounded NCCL check and training.
@@ -101,6 +102,9 @@ step=$($TRAIN_PYTHON -c 'import json,os; print(json.load(open(os.environ["MIX_EX
 if [[ "$step" -lt 5000 ]]; then
     test "$MIX_SEGMENT" -lt 3
     export MIX_SEGMENT=$((MIX_SEGMENT + 1))
+    # Later graceful segments must use their newly saved full state, rather
+    # than inheriting a one-off periodic checkpoint selected after a crash.
+    unset MIX_RECOVERY_CKPT
     next=$(sbatch --parsable --export=ALL scripts/slurm/hangang_apo_repr_mix_5k.sbatch)
     printf '%s\n' "$next" >> "$MIX_EXPERIMENT_ROOT/continuation-job-ids.txt"
 fi

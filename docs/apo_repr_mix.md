@@ -141,3 +141,9 @@ timer stop, not an arbitrary crash. The cumulative target remains 5,000 updates.
 The initial batch-8 job `1176809` was superseded before its first 500-update
 checkpoint. The batch-32 experiment restarts from the original full 71k checkpoint
 to use one batch-size policy for all 5,000 updates. Learning rate remains 1e-4.
+
+For manual node-failure recovery, set `MIX_SEGMENT` above one and pass an existing
+full periodic checkpoint through `MIX_RECOVERY_CKPT`, retaining the experiment root.
+The batch script restores optimizer/scheduler/EMA state and logs the selected
+checkpoint. It clears this one-off override before a subsequent graceful
+continuation, so later segments use the newest `progress.ckpt`.
