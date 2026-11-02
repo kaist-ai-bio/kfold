@@ -5,7 +5,7 @@ Through an apo-to-holo diffusion bridge, it models how unbound molecules assembl
 
 ![K-Fold assembles unbound component structures into a bound complex.](docs/images/figure_1.jpg)
 
-Preprint will be available soon.
+**Preprint:** [Predicting conformational changes induced by biomolecular interactions](https://doi.org/10.64898/2026.10.26.760299) (bioRxiv, 2026).
 
 ## Model parameters
 
@@ -73,7 +73,18 @@ To use K-Fold with agentic AI, visit [HITS Bio Co-Scientist](https://hyperlab.ai
 
 ## Citation
 
-TBA
+If you use K-Fold in your research, please cite our preprint:
+
+```bibtex
+@article{bae2026kfold,
+  title   = {Predicting conformational changes induced by biomolecular interactions},
+  author  = {Bae, Yeongnam and others},
+  journal = {bioRxiv},
+  year    = {2026},
+  doi     = {10.64898/2026.10.26.760299},
+  url     = {https://doi.org/10.64898/2026.10.26.760299}
+}
+```
 
 ## Acknowledgements
 
