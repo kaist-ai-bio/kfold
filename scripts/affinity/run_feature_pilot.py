@@ -4,7 +4,7 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
 import torch
-from kfold.affinity.features import FeatureContract, extract_indexed_features, indexed_rng, pack_full_cross
+from kfold.affinity.features import FeatureContract, extract_indexed_features, indexed_rng, pack_full_cross, hash_prepared_input
 from kfold.affinity.preparation import digest
 from kfold.affinity.shards import ShardStore
 from kfold.data.types.ccd import CCD
@@ -23,11 +23,7 @@ def save(p,x):
     t=p.with_suffix('.partial');t.write_text(json.dumps(x,indent=2,allow_nan=False)+'\n');t.replace(p)
 
 def input_hash(f):
-    h=hashlib.sha256()
-    for group in ['chain','token','atom','bond','sequence']:
-        for k,v in sorted(getattr(f,group).to_dict().items()):
-            t=v.detach().cpu().contiguous();h.update((group+'.'+k+str(t.dtype)+str(list(t.shape))).encode());h.update(t.view(torch.uint8).numpy().tobytes())
-    return h.hexdigest()
+    return hash_prepared_input(f)
 
 def native_reference(model,f,seed,cycles):
     """Run the normal inference entrypoint and stop immediately before diffusion."""

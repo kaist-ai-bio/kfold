@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import random
 import re
+import hashlib
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 
@@ -15,6 +16,21 @@ import torch
 
 import kfold.constants as C
 from .preparation import digest
+
+
+def hash_prepared_input(f_input):
+    """Hash exact tensor values including empty and expanded native layouts."""
+    h = hashlib.sha256()
+    for group in ('chain', 'token', 'atom', 'bond', 'sequence'):
+        for key, value in sorted(getattr(f_input, group).to_dict().items()):
+            t = value.detach().cpu()
+            h.update((group + '.' + key + str(t.dtype) + str(list(t.shape))).encode())
+            if t.numel():
+                # contiguous() may retain stride=0 for singleton/empty tensors.
+                flat = torch.empty(t.numel(), dtype=t.dtype)
+                flat.copy_(t.reshape(-1))
+                h.update(flat.view(torch.uint8).numpy().tobytes())
+    return h.hexdigest()
 
 
 @dataclass(frozen=True)
