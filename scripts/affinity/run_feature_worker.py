@@ -88,6 +88,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--campaign', required=True)
     p.add_argument('--max-chunks', type=int, default=0)
+    p.add_argument('--max-records', type=int, default=0)
     a = p.parse_args()
     cpath = Path(a.campaign)
     c = json.loads(cpath.read_text())
@@ -129,6 +130,7 @@ def main():
     start_run = time.time()
     for number in order:
         if STOP or (root/'STOP').exists(): break
+        if a.max_records and total_done >= a.max_records: break
         chunk = root/'chunks'/f'{number:06d}'
         if (chunk/'done.json').exists(): continue
         chunk.mkdir(parents=True, exist_ok=True)
@@ -145,6 +147,7 @@ def main():
                 with (chunk/'metrics.jsonl').open('a') as metrics_log:
                     for task in tasks:
                         if STOP or (root/'STOP').exists(): break
+                        if a.max_records and total_done >= a.max_records: break
                         key = task['input_id']
                         if key in store.entries:
                             # Successful partial writes are never trusted by count alone.
