@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from kfold.data.types.model_input import FoldingInput
 from kfold.model.model import KFold, KFoldConfig
-from kfold.model.modules.apo_repr_mix import mix_representations
+from kfold.model.modules.apo_repr_mix import ResidualSetMixer, mix_representations
 from kfold.model.modules.ecsi import ECSISOARConfig
 from kfold.utils.runtime import is_cuequivariance_installed
 
@@ -132,7 +132,10 @@ class KFoldForTrain(KFold):
                     (self.apo_repr_mix.confidence_z, self.apo_repr_mix.confidence_s)
                 )
             for adapter in adapters:
-                adapter.compile(**opts)
+                if isinstance(adapter, ResidualSetMixer):
+                    adapter.do_compile(**opts)
+                else:
+                    adapter.compile(**opts)
 
     def _get_model_module(self, module: torch.nn.Module | None) -> torch.nn.Module | None:
         """Return the underlying module when a compiled wrapper is not used."""

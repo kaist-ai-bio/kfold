@@ -33,7 +33,7 @@ def _small_model(depth):
         enabled=True,
         weighted_structure=True,
         hidden=8,
-        chunk_size=32,
+        chunk_size=4,
         relation_depth=depth,
         relation_hidden=8,
     )
@@ -120,6 +120,8 @@ def test_do_compile_preserves_adapter_groups_outputs_and_gradients(monkeypatch, 
         compiled.apo_repr_mix.apo_selector,
     )
     assert all(any(call is group for call in compiled_calls) for group in groups)
+    assert compiled.apo_repr_mix.structure_z.chunk_is_compiled
+    assert compiled.apo_repr_mix.structure_z._compiled_call_impl is None
     assert set(compiled.apo_repr_mix.state_dict()) == expected_keys
     actual_parameters = dict(compiled.apo_repr_mix.named_parameters())
     assert actual_parameters.keys() == expected_parameters.keys()

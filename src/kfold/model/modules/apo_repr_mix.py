@@ -39,6 +39,7 @@ class ResidualSetMixer(nn.Module):
     def __init__(self, channels, hidden, chunk_size):
         super().__init__()
         self.chunk_size = chunk_size
+        self.chunk_is_compiled = False
         self.phi = nn.Sequential(
             nn.LayerNorm(2 * channels), nn.Linear(2 * channels, hidden), nn.SiLU()
         )
@@ -46,6 +47,12 @@ class ResidualSetMixer(nn.Module):
         self.out = nn.Linear(hidden, channels)
         nn.init.zeros_(self.out.weight)
         nn.init.zeros_(self.out.bias)
+
+    def do_compile(self, **kwargs):
+        # The full pair axis has hundreds of checkpointed chunks. Compile only
+        # their shared work so Dynamo does not unroll the outer Python loop.
+        self._chunk = torch.compile(self._chunk, **kwargs)
+        self.chunk_is_compiled = True
 
     def _chunk(self, base, peers, valid):
         h = self.phi(torch.cat((peers, peers - base[:, None]), dim=-1))

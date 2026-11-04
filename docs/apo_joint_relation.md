@@ -119,9 +119,13 @@ should be presented as a physical posterior.
 Both variants use seed 3, crop 768, at most three apos/three complex branches,
 one recycle, diffusion training batch 4, and a 30-step/one-sample confidence
 mini-rollout. Compilation is on (`mode: default`, `dynamic: false`), using the
-existing backbone/head compilation and in-place compilation of the four new
-adapters. In-place compilation preserves their audited parameter/checkpoint
-names. Existing activation checkpoint settings are retained. Adam/LR scheduling
+existing backbone/head compilation and compilation of the four new adapters.
+The structure pair mixer compiles its reusable `_chunk` calculation, retaining
+the outer Python loop and per-chunk activation checkpointing. Compiling the whole
+768-by-768 pair loop would unroll 576 chunks into an unnecessarily large graph.
+Confidence/utility adapters compile in place. Both approaches preserve their
+audited parameter/checkpoint names. Existing activation checkpoint settings are
+retained. Adam/LR scheduling
 is inherited with peak LR 1e-4 and 100-update
 warmup. The production proposal is **5,000 updates** on 32 nodes x 4 GPUs,
 batch 1/GPU and no accumulation: global batch 128 per variant. Two variants
@@ -173,6 +177,10 @@ five 4-MiB all-reduces after warmup; this is a small payload probe, not proof of
 optimal network saturation or GPU Direct RDMA. Runtime receipts record selected
 transport variables and compile registrations. CUDA launch blocking is unset
 unless `JOINT_CUDA_LAUNCH_BLOCKING=1` explicitly requests a diagnostic run.
+`TRITON_STORE_BINARY_ONLY=1` retains executable kernels and metadata while
+omitting intermediate compiler IR cache files, reducing per-rank inode use.
+Lightning's automatic Slurm requeue signal handler is explicitly disabled;
+continuation after a timer pause remains a separate full-state resume.
 
 `JOINT_COMPILE_ENABLED=false` provides an otherwise identical eager control.
 `JOINT_PROFILE_STEP=16` profiles one rank-zero optimizer update and writes a

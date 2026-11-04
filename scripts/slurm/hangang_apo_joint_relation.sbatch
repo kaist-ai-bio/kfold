@@ -34,6 +34,8 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 export TORCHINDUCTOR_COMPILE_THREADS=4 MAX_JOBS=4
+# Keep executable kernels/metadata, without per-rank intermediate compiler IR.
+export TRITON_STORE_BINARY_ONLY=1
 # CUDA launch blocking is a debugging aid, not a production optimization.
 if [[ ${JOINT_CUDA_LAUNCH_BLOCKING:-0} == 1 ]]; then
     export CUDA_LAUNCH_BLOCKING=1

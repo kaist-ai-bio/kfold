@@ -12,6 +12,7 @@ from pathlib import Path
 import lightning.pytorch as pl
 import torch
 import torch.distributed as dist
+from lightning.fabric.plugins.environments import SLURMEnvironment
 from lightning.pytorch.callbacks import Timer
 from lightning.pytorch.loggers import CSVLogger
 
@@ -89,9 +90,15 @@ class JointTrainingAudit(pl.Callback):
             compile_enabled=module.compile_config.enabled,
             compile_mode=module.compile_config.mode,
             compile_dynamic=module.compile_config.dynamic,
+            auto_requeue=getattr(
+                trainer.strategy.cluster_environment, "auto_requeue", None
+            ),
             compiled_adapters={
-                group: getattr(mixers.get_submodule(group), "_compiled_call_impl", None)
-                is not None
+                group: (
+                    getattr(mixers.get_submodule(group), "_compiled_call_impl", None)
+                    is not None
+                    or getattr(mixers.get_submodule(group), "chunk_is_compiled", False)
+                )
                 for group in self.groups
             },
             environment={
@@ -107,6 +114,7 @@ class JointTrainingAudit(pl.Callback):
                     "MKL_NUM_THREADS",
                     "TORCHINDUCTOR_COMPILE_THREADS",
                     "MAX_JOBS",
+                    "TRITON_STORE_BINARY_ONLY",
                     "CUDA_LAUNCH_BLOCKING",
                     "TRITON_CACHE_DIR",
                     "TORCHINDUCTOR_CACHE_DIR",
@@ -365,6 +373,11 @@ def main():
 
     def build(cfg, debug=False):
         trainer = original(cfg, debug)
+        environment = trainer.strategy.cluster_environment
+        if isinstance(environment, SLURMEnvironment):
+            # Timer pauses require explicit full-state continuation, not a new
+            # invocation of the fresh-71K launcher after an external signal.
+            environment.auto_requeue = False
         trainer.callbacks = [
             SegmentTimer(duration=cfg.train.trainer.max_time)
             if isinstance(callback, Timer)
