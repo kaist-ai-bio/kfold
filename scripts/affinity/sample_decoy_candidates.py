@@ -27,6 +27,7 @@ KNOWN = {}
 EXISTING = {}
 CLUSTERS = {}
 LENGTHS = {}
+FIXED = {}
 SEED = 20261105
 
 
@@ -44,8 +45,9 @@ def sample_target(task):
     exclusion = [FPS[i] for i in KNOWN[cluster]]
     if not exclusion:
         raise ValueError('Missing measured association evidence')
-    selected = set()
-    out, failed, reasons = [], [], Counter()
+    out = list(FIXED.get(protein, []))
+    selected = {row['ligand_sha'] for row in out}
+    failed, reasons = [], Counter()
     for anchor, p_tokens in anchors:
         rng = random.Random(str(SEED) + ':' + anchor)
         for attempt in range(1, max_attempts + 1):
@@ -76,18 +78,22 @@ def sample_target(task):
 
 
 def main():
-    global FPS, KEYS, DONORS, KNOWN, EXISTING, CLUSTERS, LENGTHS, SEED
+    global FPS, KEYS, DONORS, KNOWN, EXISTING, CLUSTERS, LENGTHS, SEED, FIXED
     parser = argparse.ArgumentParser()
     for name in ['associations', 'fingerprints', 'clusters', 'registry', 'out']:
         parser.add_argument(name, type=Path)
     parser.add_argument('--target-count', type=int, default=250000)
+    parser.add_argument('--all-training', action='store_true', help='One candidate per unique eligible source input')
+    parser.add_argument('--existing-candidates', type=Path, help='Preserve already audited candidates exactly')
     parser.add_argument('--pilot-limit', type=int)
     parser.add_argument('--workers', type=int, default=8)
     parser.add_argument('--seed', type=int, default=20261105)
     parser.add_argument('--max-attempts', type=int, default=256)
     a = parser.parse_args()
-    if not 0 < a.target_count <= 250000 or (a.pilot_limit is not None and a.pilot_limit <= 0):
+    if a.target_count <= 0 or (a.pilot_limit is not None and a.pilot_limit <= 0):
         raise ValueError('Invalid candidate count')
+    if a.existing_candidates and (not a.all_training or a.pilot_limit):
+        raise ValueError('Preserving a candidate set requires full training expansion')
     a.out.mkdir(exist_ok=False)
     SEED = a.seed
     started = time.time()
@@ -118,7 +124,11 @@ def main():
     KNOWN = {k: sorted(v) for k, v in known.items()}
     del associations, known
     anchors.sort()
-    sampled = random.Random(SEED).sample(anchors, min(a.target_count, len(anchors)))
+    if a.all_training:
+        a.target_count = len(anchors)
+    if a.target_count > len(anchors):
+        raise ValueError('Requested count exceeds unique eligible training anchors')
+    sampled = anchors if a.all_training else random.Random(SEED).sample(anchors, a.target_count)
     if a.pilot_limit is not None:
         sampled = sampled[:a.pilot_limit]
     del anchors
@@ -130,9 +140,30 @@ def main():
             raise ValueError('Ambiguous ligand token count')
         LENGTHS[ligand] = tokens
     db.close();EXISTING = dict(existing)
+    fixed_anchors = set()
+    if a.existing_candidates:
+        anchor_lookup = {anchor: (protein, tokens) for anchor, protein, tokens in sampled}
+        fixed = defaultdict(list)
+        pairs = set()
+        donors = set(DONORS)
+        for row in pq.read_table(a.existing_candidates).to_pylist():
+            anchor, protein, ligand = row['anchor_input_id'], row['protein_sha'], row['ligand_sha']
+            if anchor in fixed_anchors or anchor_lookup.get(anchor) != (protein, row['protein_tokens']):
+                raise ValueError('Existing candidate anchor is duplicated or outside training population')
+            if (protein, ligand) in pairs or ligand in EXISTING[protein] or lookup[ligand] not in donors:
+                raise ValueError('Existing candidate violates pair or donor identity exclusion')
+            if row['sampling_seed'] != SEED or row['cluster_id'] != CLUSTERS[protein]:
+                raise ValueError('Existing candidate recipe differs')
+            if not 0 <= row['max_cluster_similarity'] < .3 or row['affinity_value'] is not None:
+                raise ValueError('Existing candidate violates similarity or label contract')
+            fixed_anchors.add(anchor);pairs.add((protein, ligand));fixed[protein].append(row)
+        FIXED = dict(fixed)
+        del anchor_lookup, fixed, donors, pairs
     grouped = defaultdict(list)
     for anchor, protein, tokens in sampled:
-        grouped[protein].append((anchor, tokens))
+        grouped[protein]  # Include targets whose anchors were all already preserved.
+        if anchor not in fixed_anchors:
+            grouped[protein].append((anchor, tokens))
     schema = pa.schema([(k, pa.string()) for k in ['candidate_id','anchor_input_id','protein_sha','ligand_sha','cluster_id']] +
         [('max_cluster_similarity',pa.float64())] + [(k,pa.int64()) for k in ['cluster_measured_ligands','sampling_attempt','sampling_seed','protein_tokens','ligand_tokens','total_tokens']] +
         [('evidence_type',pa.string()),('assumed_binary_label',pa.int64()),('affinity_value',pa.float64())])
@@ -154,6 +185,8 @@ def main():
     (a.out/'unfilled-anchors.json').write_text(json.dumps(failures,indent=2)+'\n')
     receipt = dict(stage='candidate_pairs_not_feature_ready',candidates=count,requested_anchors=len(sampled),
         full_target_count=a.target_count,pilot_limit=a.pilot_limit,failed_anchors=len(failures),
+        all_training=a.all_training,preserved_candidates=len(fixed_anchors),
+        existing_candidates_sha256=sha(a.existing_candidates) if a.existing_candidates else None,
         target_proteins=len(grouped),max_cluster_similarity=max_similarity,above_previous_2048_tokens=long_inputs,
         exclusion_policy='All measured source associations in cluster; conservative superset of known binders, not assertion that every measured pair is a binder',
         existing_pair_scope='All current registry pairs including validation, identity only; no validation activity labels used',

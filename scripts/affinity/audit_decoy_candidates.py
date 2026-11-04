@@ -16,9 +16,11 @@ def main():
     p = argparse.ArgumentParser()
     for name in ['candidates', 'associations', 'fingerprints', 'clusters', 'registry', 'out']:
         p.add_argument(name, type=Path)
+    p.add_argument('--require-all-training', action='store_true')
+    p.add_argument('--existing-candidates', type=Path)
     a = p.parse_args()
     rows = pq.read_table(a.candidates).to_pylist()
-    assert rows and len(rows) <= 250000
+    assert rows
     clusters = dict(line.split('\t')[::-1] for line in a.clusters.read_text().splitlines())
     fingerprints = {r['ligand_sha']: r for r in pq.read_table(a.fingerprints,
         columns=['ligand_sha', 'fingerprint', 'donor_eligible', 'heldout_identity']).to_pylist()}
@@ -30,7 +32,9 @@ def main():
     db = sqlite3.connect('file:' + str(a.registry) + '?mode=ro', uri=True)
     existing = set(db.execute('SELECT protein_sha,ligand_sha FROM systems'))
     db.close()
-    ids, pairs = set(), set()
+    ids, pairs, used_anchors = set(), set(), set()
+    preserved = {r['candidate_id']: r for r in pq.read_table(a.existing_candidates).to_pylist()} if a.existing_candidates else {}
+    preserved_count = 0
     for r in rows:
         protein, ligand = r['protein_sha'], r['ligand_sha']
         pair = (protein, ligand)
@@ -40,6 +44,11 @@ def main():
         assert r['candidate_id'] == expected and expected not in ids
         ids.add(expected)
         anchor = anchors[r['anchor_input_id']]
+        assert r['anchor_input_id'] not in used_anchors
+        used_anchors.add(r['anchor_input_id'])
+        if expected in preserved:
+            assert r == preserved[expected]
+            preserved_count += 1
         assert anchor['protein_sha'] == protein and anchor['historical_train_eligible']
         assert r['cluster_id'] == clusters[protein]
         assert r['cluster_measured_ligands'] == len(measured[clusters[protein]])
@@ -50,6 +59,9 @@ def main():
         assert 0 <= r['max_cluster_similarity'] < .3
         assert r['protein_tokens'] == anchor['protein_tokens']
         assert r['total_tokens'] == r['protein_tokens'] + r['ligand_tokens']
+    assert preserved_count == len(preserved)
+    if a.require_all_training:
+        assert used_anchors == {k for k, v in anchors.items() if v['historical_train_eligible']}
     sample = random.Random(71359).sample(rows, min(256, len(rows)))
     cache = {}
     def fp(key):
@@ -62,6 +74,7 @@ def main():
         assert value < .3 and abs(value - r['max_cluster_similarity']) < 1e-12
     quantiles = [0, .5, .9, .95, .99, 1]
     summary = dict(candidates=len(rows), unique_pairs=len(pairs), all_identity_checks_passed=True,
+        one_per_training_input_verified=a.require_all_training, preserved_candidates_verified=preserved_count,
         independently_recomputed_similarity_rows=len(sample), similarity_checks_passed=True,
         target_proteins=len({r['protein_sha'] for r in rows}),
         unique_donor_ligands=len({r['ligand_sha'] for r in rows}),
