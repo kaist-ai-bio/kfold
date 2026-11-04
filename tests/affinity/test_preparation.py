@@ -113,8 +113,13 @@ def test_feature_extractor_replays_seed_and_restores_model_mode():
     assert not torch.equal(a["z_pair_values"], c["z_pair_values"])
     assert model.training and not a["receipt"]["pp_stored"]
     token.pad_mask[0, -1] = False
-    with pytest.raises(ValueError):
-        extract(1)
+    padded = extract(1)
+    assert padded['s_inputs'].shape[0] == 3
+    assert padded['receipt']['padded_tokens'] == 4
+    assert padded['token_mapping']['padded_token_position'].tolist() == [0, 1, 2]
+    assert padded['z_pair_indices'].max().item() == 2
+    # Padding remains visible to the trunk but is absent from persisted pairs.
+    assert torch.equal(padded['z_pair_values'], extract(1)['z_pair_values'])
 
 
 @pytest.mark.parametrize("cross_only", [True, False])

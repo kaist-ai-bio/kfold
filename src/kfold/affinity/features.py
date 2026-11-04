@@ -38,7 +38,7 @@ def indexed_rng(system_index: int):
     """Use the unique system index directly as seed; restore caller RNG states.
 
     Serialized execution only: global RNG isolation is not thread safe. Each
-    process owns one GPU and executes one unpadded system at a time. A fixed
+    process owns one GPU and executes one system with native padding at a time. A fixed
     seed alone does not guarantee identical output across kernels/hardware.
     """
     if type(system_index) is not int or not 0 <= system_index < 2**32:
@@ -113,21 +113,28 @@ def extract_indexed_features(model, f_input, *, system_id: str, system_index: in
     if not 0 < float(model.lm_dropout) < 1:
         raise ValueError("Native LM-to-pair dropout must be enabled")
     mask = f_input.token.pad_mask
-    if mask.ndim != 2 or mask.shape[0] != 1 or not mask.all():
-        raise ValueError("Extract one unpadded system at a time for seed stability")
+    if mask.ndim != 2 or mask.shape[0] != 1 or not mask.any():
+        raise ValueError("Extract one nonempty system at a time for seed stability")
+    valid = mask[0].bool()
+    positions = valid.nonzero().flatten()
     flags = [(m, m.training) for m in model.modules()]
     try:
         model.eval()  # run_trunk deliberately calls LM dropout with training=True.
         with indexed_rng(system_index), torch.inference_mode(), torch.autocast(
                 device_type=f_input.device.type, dtype=torch.bfloat16):
             singles, lm, z = model.run_trunk(f_input, contract.num_recycles)
-            dist = model.distogram_head(z)
-            chain = f_input.token.chain_type[0]
+            # Match normal inference: FP32 distogram projection, BF16 persistence.
+            with torch.autocast(f_input.device.type, enabled=False):
+                dist = model.distogram_head(z.float())
+            chain = f_input.token.chain_type[0, valid]
             names = ("chain_type", "entity_id", "asym_id", "apo_uid", "sym_id",
                      "token_index", "org_token_index", "residue_index", "seq_token_index",
                      "center_index", "repr_index", "frame_index", "num_atoms")
-            mapping = {k: getattr(f_input.token, k)[0] for k in names}
-            result = pack_full_cross(singles[0], lm[0], z[0], dist["logits"][0],
+            mapping = {k: getattr(f_input.token, k)[0, valid] for k in names}
+            mapping['padded_token_position'] = positions
+            result = pack_full_cross(singles[0, valid], lm[0, valid],
+                z[0].index_select(0, positions).index_select(1, positions),
+                dist["logits"][0].index_select(0, positions).index_select(1, positions),
                 protein_mask=chain == C.ChainType.PROTEIN.value,
                 ligand_mask=chain == C.ChainType.LIGAND.value,
                 bin_boundaries=dist["bin_boundaries"], token_mapping=mapping)
@@ -137,7 +144,8 @@ def extract_indexed_features(model, f_input, *, system_id: str, system_index: in
     receipt = dict(system_id=system_id, system_index=system_index, seed=system_index,
                    input_sha256=input_sha256, contract=asdict(contract),
                    lm_dropout=float(model.lm_dropout), torch_version=str(torch.__version__),
-                   device=str(f_input.device), diffusion_executed=False, pp_stored=False)
+                   device=str(f_input.device), padded_tokens=mask.shape[1],
+                   actual_tokens=int(valid.sum()), diffusion_executed=False, pp_stored=False)
     result["receipt"] = receipt
     result["cache_identity_sha256"] = digest(receipt)
     return result
