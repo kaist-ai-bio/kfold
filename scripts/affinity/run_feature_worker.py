@@ -97,6 +97,8 @@ def main():
     rank = int(os.environ.get('SLURM_PROCID', '0'))
     world = int(os.environ.get('SLURM_NTASKS', '1'))
     job = os.environ.get('SLURM_JOB_ID', 'manual')
+    def stopping():
+        return STOP or (root/'STOP').exists() or (root/'stop-jobs'/job).exists()
     logdir = root/'workers'/f'{job}-{rank:04d}'
     logdir.mkdir(parents=True, exist_ok=True)
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGUSR1):
@@ -117,9 +119,16 @@ def main():
         use_rna_encoder=False, kernel_backend='triton')
     runner = KFoldRunner(model, ccd=CCD.load(c['ccd']), cache_dir=c['cache'], verbose=False)
     assert float(model.lm_dropout) == 0.25
+    # Native libraries may install signal handlers during model initialization.
+    # A job-scoped file also permits a reliable input-boundary stop without
+    # depending on Slurm's signal propagation to each Python process.
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGUSR1):
+        signal.signal(sig, signal_stop)
     save(logdir/'hardware.json', dict(gpu=torch.cuda.get_device_name(),
         vram_bytes=torch.cuda.get_device_properties(0).total_memory, torch=str(torch.__version__),
-        campaign_sha256=sha(cpath), feature_contract=asdict(contract), rank=rank, world=world, job=job))
+        campaign_sha256=sha(cpath), feature_contract=asdict(contract), rank=rank, world=world, job=job,
+        driver_sha256=sha(__file__), pid=os.getpid(), hostname=os.uname().nodename,
+        cuda_visible_devices=os.environ.get('CUDA_VISIBLE_DEVICES')))
     checked_apos = {}
     chunk_size = c['chunk_size']
     count = (c['systems'] + chunk_size - 1) // chunk_size
@@ -129,7 +138,7 @@ def main():
     total_done = 0
     start_run = time.time()
     for number in order:
-        if STOP or (root/'STOP').exists(): break
+        if stopping(): break
         if a.max_records and total_done >= a.max_records: break
         chunk = root/'chunks'/f'{number:06d}'
         if (chunk/'done.json').exists(): continue
@@ -146,7 +155,7 @@ def main():
             try:
                 with (chunk/'metrics.jsonl').open('a') as metrics_log:
                     for task in tasks:
-                        if STOP or (root/'STOP').exists(): break
+                        if stopping(): break
                         if a.max_records and total_done >= a.max_records: break
                         key = task['input_id']
                         if key in store.entries:
@@ -203,7 +212,7 @@ def main():
                     storage_contract_id=c['storage_contract_id'], time=time.time()))
                 chunks_done += 1
             if a.max_chunks and chunks_done >= a.max_chunks: break
-    save(logdir/'exit.json', dict(time=time.time(), stopped=STOP or (root/'STOP').exists(),
+    save(logdir/'exit.json', dict(time=time.time(), stopped=stopping(),
         chunks_done=chunks_done, systems_processed=total_done))
 
 
