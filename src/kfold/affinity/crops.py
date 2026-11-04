@@ -8,14 +8,12 @@ from __future__ import annotations
 import torch
 
 
-def protein_distance_profile(payload, *, min_dist=2.0, max_dist=22.0):
-    """Minimum expected ligand distance per protein token, from sparse logits.
+def distance_bin_centers(payload, *, min_dist=2.0, max_dist=22.0):
+    """Validate saved edges and return the pinned finite bin representatives.
 
     Open-ended bins use the finite representatives from the pinned K-Fold head
     convention. Validate saved edges before using these representatives.
     """
-    p = payload["protein_mask"].bool()
-    l = payload["ligand_mask"].bool()
     logits = payload["distogram_tri_logits"].float()
     edges = payload["bin_boundaries"].float()
     bins = logits.shape[-1]
@@ -25,10 +23,18 @@ def protein_distance_profile(payload, *, min_dist=2.0, max_dist=22.0):
     expected_edges = torch.linspace(min_dist + step, max_dist - step, bins - 1)
     if edges.shape != expected_edges.shape or not torch.allclose(edges, expected_edges, atol=1e-5, rtol=0):
         raise ValueError("Saved distance bins do not match the configured head")
+    return torch.linspace(min_dist + step / 2, max_dist - step / 2, bins)
+
+
+def protein_distance_profile(payload, *, min_dist=2.0, max_dist=22.0):
+    """Minimum expected ligand distance per protein token, from sparse logits."""
+    p = payload["protein_mask"].bool()
+    l = payload["ligand_mask"].bool()
+    logits = payload["distogram_tri_logits"].float()
+    centers = distance_bin_centers(payload, min_dist=min_dist, max_dist=max_dist)
     pair = payload["distogram_tri_indices"].long()
     cross = (p[pair[:, 0]] & l[pair[:, 1]]) | (l[pair[:, 0]] & p[pair[:, 1]])
     pair = pair[cross]
-    centers = torch.linspace(min_dist + step / 2, max_dist - step / 2, bins)
     distances = (logits[cross].softmax(-1) * centers).sum(-1)
     protein_pos = torch.where(p[pair[:, 0]], pair[:, 0], pair[:, 1])
     ligand_pos = torch.where(l[pair[:, 0]], pair[:, 0], pair[:, 1])
