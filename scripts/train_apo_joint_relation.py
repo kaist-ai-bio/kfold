@@ -5,6 +5,8 @@ import json
 import math
 import os
 import socket
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import lightning.pytorch as pl
@@ -77,6 +79,7 @@ class JointTrainingAudit(pl.Callback):
         self.grad_seen = dict.fromkeys(self.groups, False)
         self.norms = dict.fromkeys(self.groups, 0.0)
         self.initial_step = int(trainer.global_step)
+        self.started = time.monotonic()
         if not 0 <= self.initial_step < trainer.max_steps:
             raise ValueError("Resume checkpoint must precede the requested update target")
         self.parameters = {
@@ -98,6 +101,10 @@ class JointTrainingAudit(pl.Callback):
         ]
         if altered:
             raise AssertionError(f"Frozen parameter audit failed: {altered[:8]}")
+
+    def on_train_batch_start(self, trainer, module, batch, batch_idx):
+        self.batch_started = time.monotonic()
+        self.sample_ids = [str(info.get("id", "unknown")) for info in batch[1]]
 
     def on_before_optimizer_step(self, trainer, module, optimizer):
         self.norms = {}
@@ -144,12 +151,16 @@ class JointTrainingAudit(pl.Callback):
                 "running",
                 gradients=self.norms,
                 losses=self.scalar_metrics(trainer),
+                step_seconds=time.monotonic() - self.batch_started,
+                sample_ids=self.sample_ids,
                 combinations=getattr(module.model, "last_apo_mix_assignments", None),
             )
 
     def write(self, trainer, status, **extra):
         result = dict(
             status=status,
+            observed_at=datetime.now(UTC).isoformat(),
+            elapsed_seconds=time.monotonic() - self.started,
             rank=trainer.global_rank,
             host=socket.gethostname(),
             variant=os.environ.get("JOINT_VARIANT"),

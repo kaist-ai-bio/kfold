@@ -21,18 +21,30 @@ def apo_utility_quality(
     examples fall back to resolved intrachain contacts. A missing interface is
     an absent target, rather than a zero-quality observation.
     """
-    b, n, _, _ = x_pred.shape
-    indices = f_input.token.repr_index[:, None].expand(b, n, -1)
+    b, n, atom_count, _ = x_pred.shape
+    if atom_count == 0:
+        return x_pred.new_zeros(b, n), torch.zeros(
+            b, n, dtype=torch.bool, device=x_pred.device
+        )
+    repr_indices = f_input.token.repr_index
+    valid_token = (
+        f_input.token.pad_mask & (repr_indices >= 0) & (repr_indices < atom_count)
+    )
+    # Padding uses -1, and a malformed positive index must also remain invalid.
+    # Clamp only to make gather safe; validity is carried separately throughout.
+    safe_indices = repr_indices.clamp(0, atom_count - 1)
+    valid_token &= f_input.atom.pad_mask.gather(1, safe_indices)
+    indices = safe_indices[:, None].expand(b, n, -1)
     xyz_index = indices[..., None].expand(-1, -1, -1, 3)
     predicted = x_pred.detach().float().gather(2, xyz_index)
     reference = x_gt.detach().float().gather(2, xyz_index)
-    resolved = mask_gt.gather(2, indices) & f_input.token.pad_mask[:, None]
+    resolved = mask_gt.gather(2, indices) & valid_token[:, None]
     predicted_distance = torch.cdist(predicted, predicted)
     reference_distance = torch.cdist(reference, reference)
     length = indices.shape[-1]
     token_pair = (
-        f_input.token.pad_mask[:, :, None]
-        & f_input.token.pad_mask[:, None, :]
+        valid_token[:, :, None]
+        & valid_token[:, None, :]
         & ~torch.eye(length, device=x_pred.device, dtype=torch.bool)[None]
     )
     interchain = f_input.token.asym_id[:, :, None] != f_input.token.asym_id[:, None, :]

@@ -184,6 +184,12 @@ def make_apo_branches(f, cap, train_max_apo=None):
     Chemical reference features, crop, atom layout, and ECSI priors are untouched.
     Returned validity masks exclude repeated padding branches in mixed-size batches.
     """
+    if f.token.apo_repr_coords.shape[2] == 0:
+        return (
+            [f],
+            torch.zeros(f.batch_size, 1, dtype=torch.bool, device=f.device),
+            [[{}] for _ in range(f.batch_size)],
+        )
     seed = int(torch.randint(0, 2**31 - 1, (), device=f.device).item())
     rng = random.Random(seed)
     assignments = []
@@ -300,6 +306,19 @@ def mix_representations(
                     _, branch_s, branch_z = model.run_trunk(
                         branch, num_recycles, feature_taps=capture
                     )
+                    batch, length = branch.token.pad_mask.shape
+                    if "apo_single" not in capture or capture["apo_single"].shape[1] == 0:
+                        capture["apo_single"] = branch_s.new_zeros(batch, 1, length, 2560)
+                        capture["apo_single_mask"] = torch.zeros(
+                            batch, 1, length, device=f.device, dtype=torch.bool
+                        )
+                    if capture["apo_pair"].shape[1] == 0:
+                        capture["apo_pair"] = branch_z.new_zeros(
+                            batch, 1, length, length, 64
+                        )
+                        capture["apo_pair_mask"] = torch.zeros(
+                            batch, 1, length, length, device=f.device, dtype=torch.bool
+                        )
                     taps.append(capture)
                 else:
                     _, branch_s, branch_z = model.run_trunk(branch, num_recycles)
@@ -312,12 +331,16 @@ def mix_representations(
             for name in ("apo_single", "apo_single_mask", "apo_pair", "apo_pair_mask")
         }
         with torch.no_grad():
-            coords = torch.stack(
-                [branch.token.apo_repr_coords[:, :, 0] for branch in branches], 1
-            )
-            masks = torch.stack(
-                [branch.token.apo_repr_mask[:, :, 0] for branch in branches], 1
-            )
+            if f.token.apo_repr_coords.shape[2] == 0:
+                coords = z.new_zeros(f.batch_size, len(branches), z.shape[1], 3)
+                masks = torch.zeros(coords.shape[:-1], dtype=torch.bool, device=f.device)
+            else:
+                coords = torch.stack(
+                    [branch.token.apo_repr_coords[:, :, 0] for branch in branches], 1
+                )
+                masks = torch.stack(
+                    [branch.token.apo_repr_mask[:, :, 0] for branch in branches], 1
+                )
             geom_mask = (
                 context["apo_pair_mask"] & masks[..., :, None] & masks[..., None, :]
             )

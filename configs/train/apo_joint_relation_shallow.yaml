@@ -4,4 +4,3 @@ model:
     relation_depth: 1
 train:
   name: apo-joint-relation-shallow
-

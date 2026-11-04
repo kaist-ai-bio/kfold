@@ -57,6 +57,26 @@ def test_single_chain_fallback_and_unresolved_targets():
     assert not observed.any() and torch.equal(quality, torch.zeros_like(quality))
 
 
+def test_invalid_representative_indices_are_safe_and_excluded():
+    native = geometry()
+    mask = torch.ones(1, 1, 4, dtype=torch.bool)
+    original = apo_utility_quality(features(), native, native, mask)
+    f = features((1, 1, 2, 2, 99, 99))
+    f.token.repr_index = torch.tensor([[0, 1, 2, 3, -1, 999]])
+    f.atom.pad_mask = torch.ones(1, 4, dtype=torch.bool)
+    # Invalid representatives are excluded even if token padding was not set.
+    actual = apo_utility_quality(f, native, native, mask)
+    for expected, observed in zip(original, actual, strict=True):
+        torch.testing.assert_close(expected, observed)
+    f.token.repr_index = torch.tensor([[-1, 999, -1, 999, -1, 999]])
+    quality, observed = apo_utility_quality(f, native, native, mask)
+    assert not observed.any() and torch.count_nonzero(quality) == 0
+    f = features()
+    f.atom.pad_mask = torch.zeros(1, 4, dtype=torch.bool)
+    quality, observed = apo_utility_quality(f, native, native, mask)
+    assert not observed.any() and torch.count_nonzero(quality) == 0
+
+
 def test_only_observed_branch_gets_utility_supervision():
     scores = torch.zeros(1, 3, requires_grad=True)
     native = geometry()

@@ -148,3 +148,52 @@ def test_depth_only_changes_extra_blocks_at_initialization():
     for name, expected in shallow.state_dict().items():
         assert torch.equal(actual[name], expected), name
     assert any("updates.1" in name for name in actual)
+
+
+def test_empty_apo_pool_falls_back_to_baseline_conditioning():
+    from kfold.model.modules.apo_repr_mix import (
+        ApoRepresentationMixers,
+        mix_representations,
+    )
+
+    cfg = ApoReprMixConfig(
+        hidden=8, relation_hidden=8, relation_depth=1, weighted_structure=True
+    )
+    mixers = ApoRepresentationMixers(4, 3, cfg)
+    f = SimpleNamespace(
+        batch_size=1,
+        device=torch.device("cpu"),
+        token=SimpleNamespace(
+            pad_mask=torch.ones(1, 2, dtype=torch.bool),
+            apo_repr_coords=torch.empty(1, 2, 0, 3),
+            apo_repr_mask=torch.empty(1, 2, 0, dtype=torch.bool),
+        ),
+    )
+    z, s = torch.randn(1, 2, 2, 4), torch.randn(1, 2, 3)
+
+    def trunk(branch, recycles, *, feature_taps):
+        feature_taps.update(
+            apo_single=torch.empty(1, 0, 2, 2560),
+            apo_single_mask=torch.empty(1, 0, 2, dtype=torch.bool),
+            apo_pair=torch.empty(1, 0, 2, 2, 64),
+            apo_pair_mask=torch.empty(1, 0, 2, 2, dtype=torch.bool),
+        )
+        return s, s, z
+
+    model = SimpleNamespace(apo_repr_mix_config=cfg, apo_repr_mix=mixers, run_trunk=trunk)
+    zd, zc, sc = mix_representations(model, f, s, s, z, 1)
+    assert torch.equal(zd, z) and torch.equal(zc, z) and torch.equal(sc, s)
+    assert not model.last_apo_mix_context["valid"].any()
+    assert model.last_apo_mix_context["apo_single"].shape == (1, 1, 2, 2560)
+
+
+def test_utility_reads_geometry_when_structure_single_is_unavailable():
+    f, c, z, s, x = example()
+    c["apo_single_mask"].zero_()
+    c["apo_single"].zero_()
+    selector = ApoUtilityHead(3, 8, single_channels=6, pair_channels=3)
+    before = selector(f, c, s)
+    c["apo_pair"][:, 0, :, :, 0] += 4
+    after = selector(f, c, s)
+    assert not torch.allclose(before[:, 0], after[:, 0])
+    torch.testing.assert_close(before[:, 1:], after[:, 1:])
