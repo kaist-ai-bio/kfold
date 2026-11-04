@@ -93,6 +93,7 @@ def main():
     a = p.parse_args()
     cpath = Path(a.campaign)
     c = json.loads(cpath.read_text())
+    assert c.get('execution_authorized', True) is True, 'Prepared campaign is not released for execution'
     assert c['pilot_gate_passed'] is True and c['projected_total_bytes'] <= 60_000_000_000_000
     first_index, last_index = index_interval(c)
     reuse = {}
