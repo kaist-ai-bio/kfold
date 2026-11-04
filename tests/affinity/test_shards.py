@@ -20,3 +20,12 @@ def test_corruption_is_not_reused(tmp_path):
     p=next(tmp_path.glob('*.sqlite'));db=sqlite3.connect(p)
     db.execute('UPDATE records SET payload=?',(b'corrupt',));db.commit();db.close()
     with pytest.raises(ValueError):ShardStore(tmp_path,'a').get('a')
+
+def test_crash_between_seal_and_receipt_is_recoverable(tmp_path):
+    import json, hashlib
+    s=ShardStore(tmp_path,'a');s.add('a',payload(1));s.seal()
+    receipt=next(tmp_path.glob('*.receipt.json'));receipt.unlink()
+    recovered=ShardStore(tmp_path,'a')
+    r=json.loads(receipt.read_text())
+    assert r['sha256']==hashlib.sha256(next(tmp_path.glob('*.sqlite')).read_bytes()).hexdigest()
+    assert r['records']==1 and recovered.get('a')['cache_identity_sha256']=='1'

@@ -20,6 +20,15 @@ def decode(blob,blob_sha,raw_sha):
     if sha_bytes(raw)!=raw_sha:raise ValueError('Decoded payload checksum mismatch')
     return torch.load(io.BytesIO(raw),map_location='cpu',weights_only=True)
 
+def publish_receipt(path, count, contract_id):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for b in iter(lambda:f.read(8*1024**2),b''):h.update(b)
+    receipt=path.with_suffix('.receipt.json');tmp=receipt.with_suffix('.partial')
+    tmp.write_text(json.dumps(dict(shard=path.name,records=count,bytes=path.stat().st_size,
+        sha256=h.hexdigest(),contract_id=contract_id),indent=2)+'\n')
+    tmp.replace(receipt)
+
 class ShardStore:
     def __init__(self,root,contract_id,max_bytes=1024**3):
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
@@ -35,6 +44,10 @@ class ShardStore:
             for key,identity in c.execute('SELECT system_id,identity FROM records'):
                 if key in self.entries:raise ValueError('Duplicate system across shards')
                 self.entries[key]=(p,identity)
+            if p.suffix=='.sqlite' and not p.with_suffix('.receipt.json').exists():
+                # Recover a crash after sealed rename, before receipt publication.
+                assert c.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+                publish_receipt(p,c.execute('SELECT count(*) FROM records').fetchone()[0],contract_id)
             c.close()
         self.next_index=max([int(p.name.split('-')[1].split('.')[0]) for p in files],default=-1)+1
         if partials:self._open(partials[0])
@@ -69,8 +82,5 @@ class ShardStore:
         assert self.db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
         count=self.db.execute('SELECT count(*) FROM records').fetchone()[0];self.db.close();self.db=None
         old=self.path;dest=old.with_suffix('');old.rename(dest)
-        h=hashlib.sha256()
-        with dest.open('rb') as f:
-            for b in iter(lambda:f.read(8*1024**2),b''):h.update(b)
-        dest.with_suffix('.receipt.json').write_text(json.dumps(dict(shard=dest.name,records=count,bytes=dest.stat().st_size,sha256=h.hexdigest(),contract_id=self.contract_id),indent=2)+'\n')
+        publish_receipt(dest,count,self.contract_id)
         self.entries={k:(dest if p==old else p,i) for k,(p,i) in self.entries.items()}
