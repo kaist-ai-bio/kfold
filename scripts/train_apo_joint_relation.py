@@ -255,6 +255,36 @@ def main():
     spec.loader.exec_module(train)
     original = train.build_trainer
     original_datamodule = train.TrainingDataModule
+    original_initialize = train.initialize_parameter_groups_from_ema
+
+    def initialize_final_base(**kwargs):
+        state, keys = original_initialize(**kwargs)
+        if set(kwargs["groups_to_initialize"]) == set(kwargs["parameter_groups"]):
+            expected = {"model." + name for name in kwargs["ema_params"]}
+            if set(keys) != expected:
+                raise AssertionError(
+                    "Full-base EMA initialization left uncovered tensors"
+                )
+            if not all(
+                state["model." + name] is value
+                for name, value in kwargs["ema_params"].items()
+            ):
+                raise AssertionError("Base initialization differs from checkpoint EMA")
+            print(
+                "BASE_EMA_INIT_VERIFIED",
+                json.dumps(
+                    {
+                        "tensor_count": len(expected),
+                        "tensor_bytes": sum(
+                            v.numel() * v.element_size()
+                            for v in kwargs["ema_params"].values()
+                        ),
+                        "all_checkpoint_ema_tensors_loaded": True,
+                    }
+                ),
+                flush=True,
+            )
+        return state, keys
 
     def seeded_datamodule(config):
         datamodule = original_datamodule(config)
@@ -282,6 +312,7 @@ def main():
 
     train.build_trainer = build
     train.TrainingDataModule = seeded_datamodule
+    train.initialize_parameter_groups_from_ema = initialize_final_base
     train.train(train.parse_args())
 
 

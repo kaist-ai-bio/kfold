@@ -41,9 +41,15 @@ the frozen heads still train the new input adapters.
 
 The structure and confidence residual outputs are zero-initialized. Thus those
 paths initially reproduce the explicitly initialized 71K model, despite the new
-utility predictor having fresh parameters. The reference uses **trunk EMA and
-raw structure/confidence head values**, following `init_from_ema: ['trunk']`.
-It is not automatically identical to a public all-EMA inference export.
+utility predictor having fresh parameters. For the production launch, the reference uses **all 71K checkpoint EMA
+parameters**, including trunk, distogram, diffusion and confidence heads. This
+matches the published final K-Fold tensors. The earlier eight-GPU validation used
+trunk EMA with raw heads; it validates architecture, gradients and checkpointing,
+while production now explicitly initializes all four parameter groups from EMA.
+The initializer asserts that every checkpoint EMA tensor is covered. External
+pretrained encoders retain their pinned assets. New adapters and optimizer state
+are initialized afresh; no trained apo mixer or later confidence checkpoint is
+loaded.
 
 ## Controlled shallow/deep comparison
 

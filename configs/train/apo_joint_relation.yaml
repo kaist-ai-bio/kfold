@@ -12,7 +12,8 @@ train:
   seed: 3
   load_opt_state: false
   load_global_step: false
-  init_from_ema: ['trunk']
+  # Match the published final 71K model, including all prediction heads.
+  init_from_ema: ['trunk', 'distogram_head', 'diffusion_head', 'confidence_head']
   compile:
     enabled: false
   data:
