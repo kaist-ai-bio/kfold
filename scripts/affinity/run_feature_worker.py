@@ -24,6 +24,7 @@ from kfold.inference.query import Query, ProteinSequence, LigandSequence
 from kfold.inference.runner import KFoldRunner
 from kfold.model import KFold
 from run_feature_pilot import sha, save
+from feature_campaign import index_interval, chunk_interval, validate_cached_record, read_pilot_record
 
 STOP = False
 
@@ -93,6 +94,12 @@ def main():
     cpath = Path(a.campaign)
     c = json.loads(cpath.read_text())
     assert c['pilot_gate_passed'] is True and c['projected_total_bytes'] <= 60_000_000_000_000
+    first_index, last_index = index_interval(c)
+    reuse = {}
+    if c.get('reuse_manifest'):
+        assert sha(c['reuse_manifest']) == c['reuse_manifest_sha256']
+        reuse = json.loads(Path(c['reuse_manifest']).read_text())
+        assert all(first_index <= entry['system_index'] <= last_index for entry in reuse.values())
     root = cpath.parent
     rank = int(os.environ.get('SLURM_PROCID', '0'))
     world = int(os.environ.get('SLURM_NTASKS', '1'))
@@ -131,7 +138,7 @@ def main():
         cuda_visible_devices=os.environ.get('CUDA_VISIBLE_DEVICES')))
     checked_apos = {}
     chunk_size = c['chunk_size']
-    count = (c['systems'] + chunk_size - 1) // chunk_size
+    count = (last_index - first_index + 1 + chunk_size - 1) // chunk_size
     # First partition work cheaply; fallback allows resumption with any GPU count.
     order = list(range(rank, count, world)) + [i for i in range(count) if i % world != rank]
     chunks_done = 0
@@ -151,7 +158,9 @@ def main():
             store = ShardStore(chunk/'shards', c['storage_contract_id'])
             failures_path = chunk/'exclusions.json'
             exclusions = json.loads(failures_path.read_text()) if failures_path.exists() else {}
-            tasks = tasks_for_chunk(db, number*chunk_size+1, chunk_size)
+            chunk_start, chunk_length = chunk_interval(c, number)
+            tasks = tasks_for_chunk(db, chunk_start, chunk_length)
+            assert len(tasks) == chunk_length, 'Missing registry indices in campaign interval'
             try:
                 with (chunk/'metrics.jsonl').open('a') as metrics_log:
                     for task in tasks:
@@ -161,11 +170,23 @@ def main():
                         if key in store.entries:
                             # Successful partial writes are never trusted by count alone.
                             old = store.get(key)
-                            assert old['receipt']['system_index'] == task['system_index']
-                            assert old['source_input'] == task
+                            validate_cached_record(old, task, asdict(contract))
                             del old
                             continue
                         if key in exclusions: continue
+                        if key in reuse:
+                            assert reuse[key]['system_index'] == task['system_index']
+                            old = read_pilot_record(reuse[key], task, asdict(contract))
+                            sizes = store.add(key, old)
+                            restored = store.get(key)
+                            validate_cached_record(restored, task, asdict(contract))
+                            assert restored['cache_identity_sha256'] == old['cache_identity_sha256']
+                            metrics_log.write(json.dumps(dict(input_id=key,
+                                system_index=task['system_index'],status='reused_verified_pilot',
+                                reused_from=reuse[key],**sizes),allow_nan=False)+'\n')
+                            metrics_log.flush()
+                            del old, restored
+                            continue
                         started = time.perf_counter()
                         row = dict(input_id=key, system_index=task['system_index'], total_tokens=task['total_tokens'])
                         result = None
