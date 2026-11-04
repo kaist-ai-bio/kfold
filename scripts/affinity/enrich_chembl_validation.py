@@ -45,6 +45,7 @@ def main():
                 known.update(got)
                 reused.append(dict(page, file=str(dst), reused_from=str(src)))
         names = sorted(x for x in values - known if x)
+        print("ENRICHMENT_PLAN", kind, "total", len(values), "reused", len(known), "fetch", len(names), flush=True)
         id_key = kind + "_chembl_id"
         def fetch(start):
             batch = names[start:start+50]

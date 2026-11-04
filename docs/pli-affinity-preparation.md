@@ -43,19 +43,22 @@ are still required before production. Do not publish millions of per-system file
 
 ## Manifest access and source provenance
 
-Messi master / UID1020 verified. These directories exist but hwkim cannot list them
-(mode 0700, owner mseok; ACL checked for the affinity directory):
+Messi master / UID1020 verified. The colleague granted ACE group read/traverse
+access after the initial permission check; these backup directories are readable:
 
 ```text
 /backup/mseok/affinity_20260911
 /backup/mseok/pocket80k_full_cross_full350_20260822_r2
 /backup/mseok/pocket80k_target_full350_allprofiles_20260822_r1
+/backup/mseok/kfold_full_20260911
 ```
 
-Request directory traversal plus read access to manifests, date metadata, source
-receipts, configuration, exclusion reports and archive inventories. Feature arrays
-are not required for this audit. Do not bypass owner permissions or substitute a
-newly downloaded dataset as the colleague's exact snapshot.
+The full-cross `array-plan/label-manifest.parquet` was recovered and verified:
+2,183,290 labels and 1,337,988 cache IDs; SHA256
+`45817c2ead46a3bc49c66b75e0044f371143c788df16419ca1884e56cb81c515`.
+This feature-generation population is not the final filtered training membership.
+Original date sidecars remain missing. Newly downloaded data must not be presented
+as the colleague's exact snapshot.
 
 The readable conversation archive establishes these ORIGINAL paths (on the
 colleague's former machine, not verified as current Messi paths):
@@ -138,6 +141,11 @@ GPU, full corpus, codec throughput, and training/resume remain unverified.
 
 User decisions: retain training records for the 92-drug kinase screen and use it
 to evaluate existing-drug selectivity, reporting seen/unseen target-drug pairs.
+Prepare single-protein cases as the primary evaluation, preserving multicomponent
+assays separately. `partition_kinase_validation.py` also defers unresolved aliases
+and observed reference-sequence collisions across distinct isoform/construct names.
+Known-training-UniProt primary candidates contain 27,016 measured rows across
+298 targets and 92 drugs; the full 36,593 measured rows remain preserved.
 For ChEMBL, use the source database boundary used by SAIR, not SAIR's release
 date or an arbitrary journal-year cutoff. SAIR section 2.1 specifies ChEMBL35
 and BindingDB1Q2025 without a separate publication-year filter in that section.
@@ -152,12 +160,28 @@ older documents still need a full-dump comparison. An initial year>=2025 subset
 was audited first and must not be reported as the complete post-SAIR population.
 
 `audit_validation_overlap.py` and `curate_chembl_validation.py` run on allocated
-CPU nodes with staged inputs. Chemical identity flags are provisional: the
-neutralized largest-fragment key removes stereo/isomeric distinctions but does
-not canonicalize tautomers or adjudicate source structures. The reference
-sequence does not establish the experimental construct. Publication dates are
+CPU nodes with staged inputs. Activity curation and overlap output are streamed;
+regression on 61,352 real records preserved every summary count.
+Chemical identity flags are provisional. The neutralized largest-fragment key
+removes stereo/isomeric distinctions. `build_validation_tautomer_index.py` adds
+an RDKit HetAtomTautomer overlap screen, parsing original SMILES before graph-level
+stereo/isotope removal. All 833,383 training parent keys were hashed in the v2
+audit. This conservative screen does not adjudicate source identity or change
+input chemistry. The reference sequence does not establish the experimental
+construct. Publication dates are
 retained separately and do not silently select a split. Metadata curation does
 not launch backbone features or head training.
+
+`export_validation_candidates.py` exports numerical and censored ChEMBL candidates
+separately, plus kinase measured/missing rows and candidate sequence–ligand systems.
+It retains repeated assay rows, quality flags, PAINS/MW flags, source endpoints,
+and training overlap strata. The candidate system hash is not a production cache
+ID or seed registry. Canonical reference sequences that coincide across distinct
+assay constructs must not silently collapse labels or establish equivalent inputs.
+Kinase complex and unresolved alias records retain labels with missing input IDs.
+The source metadata pipeline is limited to downloads and CPU curation; GPU feature
+generation, finalized crop/construct input, and validation/test allocation remain
+separate decisions.
 
 The MacMini operational report is `docs/pli-validation-candidates-20261104.md`
 in the primary project; remote inputs/results remain under the recorded Messi

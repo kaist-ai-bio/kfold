@@ -11,13 +11,17 @@ import json
 from pathlib import Path
 import shutil
 import sys
+import os
+import datetime
 import urllib.parse
 from fetch_chembl_validation import BASE, request
 
 
 def main():
-    root, reuse = map(Path, sys.argv[1:])
+    root, reuse = map(Path, sys.argv[1:3])
+    workers = int(sys.argv[3]) if len(sys.argv) > 3 else 4
     root.mkdir(parents=True, exist_ok=True)
+    (root/'fetch-process.json').write_text(json.dumps({'pid':os.getpid(),'workers':workers,'started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})+'\n')
     prior = json.loads((reuse/"receipt.json").read_text())
     status = request(BASE+"status.json")
     assert status == prior["status_after"]
@@ -34,7 +38,10 @@ def main():
         if path.exists():
             with gzip.open(path,'rt') as stream:data=json.load(stream)
         else:
-            data=request(url)
+            try:
+                data=request(url)
+            except Exception as exc:
+                raise RuntimeError(f"Failed page {folder}/{name}: {url}") from exc
             with gzip.open(path.with_suffix('.part'),'wt') as stream:json.dump(data,stream,separators=(',',':'))
             path.with_suffix('.part').replace(path)
         receipt={'url':url,'file':str(path),'rows':len(data[key]),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
@@ -49,7 +56,7 @@ def main():
     first,receipt=docs_page(0)
     total=first['page_meta']['total_count']
     docs=first['documents'];doc_receipts=[receipt]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         for data,receipt in pool.map(docs_page,range(1000,total,1000)):
             assert data['page_meta']['total_count']==total
             docs.extend(data['documents']);doc_receipts.append(receipt)
@@ -89,7 +96,7 @@ def main():
         assert len(ids)==len(set(ids))==total
         print('ACTIVITY_BATCH',start,total,flush=True)
         return receipts,ids
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         for receipts,ids in pool.map(activity_batch,range(0,len(needed),50)):
             activity_receipts.extend(receipts);activity_ids.extend(ids)
     assert len(activity_ids)==len(set(activity_ids))

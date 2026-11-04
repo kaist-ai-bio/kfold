@@ -13,21 +13,26 @@ import json
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 BASE = "https://www.ebi.ac.uk/chembl/api/data/"
 
 
 def request(url):
-    for attempt in range(4):
+    for attempt in range(8):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "K-Fold-validation-audit/1.0"})
             with urllib.request.urlopen(req, timeout=120) as response:
                 return json.load(response)
-        except Exception:
-            if attempt == 3:
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if isinstance(exc, urllib.error.HTTPError) and exc.code not in {408, 429, 500, 502, 503, 504}:
                 raise
-            time.sleep(2 ** (attempt + 1))
+            if attempt == 7:
+                raise RuntimeError(f"ChEMBL request failed after retries: {url}") from exc
+            delay=min(60, 2 ** (attempt + 1))
+            print("RETRY", attempt+1, type(exc).__name__, str(exc), url, flush=True)
+            time.sleep(delay)
 
 
 def collect(root, endpoint, key, filters, year, workers):
