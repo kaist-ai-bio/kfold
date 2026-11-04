@@ -146,6 +146,14 @@ assays separately. `partition_kinase_validation.py` also defers unresolved alias
 and observed reference-sequence collisions across distinct isoform/construct names.
 Known-training-UniProt primary candidates contain 27,016 measured rows across
 298 targets and 92 drugs; the full 36,593 measured rows remain preserved.
+The independent ChEMBL drug audit supported 88 exact graph/name matches and two
+additional anhydrous-name matches. Named Abrocitinib and Pralsetinib references
+specified stereochemistry absent from the stored PubChem-name candidates.
+`curate_kinase_identity.py` generated a separate primary-input version for these
+584 systems, verifying RDKit InChIKey and unchanged non-stereo parent, retaining
+original graph/system IDs and recomputing exact training-pair overlap. Labels,
+training membership and source catalog remain unchanged. The current primary
+files are in Messi `kinase-identity-853000` under the validation experiment root.
 For ChEMBL, use the source database boundary used by SAIR, not SAIR's release
 date or an arbitrary journal-year cutoff. SAIR section 2.1 specifies ChEMBL35
 and BindingDB1Q2025 without a separate publication-year filter in that section.
