@@ -15,7 +15,9 @@ train:
   # Match the published final 71K model, including all prediction heads.
   init_from_ema: ['trunk', 'distogram_head', 'diffusion_head', 'confidence_head']
   compile:
-    enabled: false
+    enabled: true
+    mode: default
+    dynamic: false
   data:
     train_batch_size: 1
     max_tokens: 768

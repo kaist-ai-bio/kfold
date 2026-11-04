@@ -118,8 +118,11 @@ should be presented as a physical posterior.
 
 Both variants use seed 3, crop 768, at most three apos/three complex branches,
 one recycle, diffusion training batch 4, and a 30-step/one-sample confidence
-mini-rollout. Compilation is off; existing activation checkpoint settings are
-retained. Adam/LR scheduling is inherited with peak LR 1e-4 and 100-update
+mini-rollout. Compilation is on (`mode: default`, `dynamic: false`), using the
+existing backbone/head compilation and in-place compilation of the four new
+adapters. In-place compilation preserves their audited parameter/checkpoint
+names. Existing activation checkpoint settings are retained. Adam/LR scheduling
+is inherited with peak LR 1e-4 and 100-update
 warmup. The production proposal is **5,000 updates** on 32 nodes x 4 GPUs,
 batch 1/GPU and no accumulation: global batch 128 per variant. Two variants
 require 64 nodes/256 GPUs total. This is approximately 640,000 sampled complex
@@ -164,6 +167,20 @@ to its full commit. The launcher reuses the existing training environment,
 `hangang_rank.py`, all-rank IPC/NCCL preflight and CXI/libfabric settings. Cache
 directories are unique per job/rank/step under `/appsdata`; short worker socket
 paths are under `/scratch`. Exact paths are recorded; no broad cleanup occurs.
+The launcher keeps the previously validated AWS Libfabric/CXI transport and
+bounded OMP/BLAS/compiler thread counts. Its all-rank preflight additionally times
+five 4-MiB all-reduces after warmup; this is a small payload probe, not proof of
+optimal network saturation or GPU Direct RDMA. Runtime receipts record selected
+transport variables and compile registrations. CUDA launch blocking is unset
+unless `JOINT_CUDA_LAUNCH_BLOCKING=1` explicitly requests a diagnostic run.
+
+`JOINT_COMPILE_ENABLED=false` provides an otherwise identical eager control.
+`JOINT_PROFILE_STEP=16` profiles one rank-zero optimizer update and writes a
+compact `kernel-profile.json` with actual attention/cuEquivariance/compiled-region
+operator counts; no large trace is exported. This is for bounded validation, not
+continuous production profiling. SDPA remains automatic: learned additive pair
+bias and its derivatives must remain intact. No Flash/cuDNN kernel, low-precision
+diffusion or static DDP graph is forced merely to report a faster backend.
 
 The following are example commands, **not a record of submitted jobs**. Submit
 from the remote scratch checkout after reviewing the settings and live quota.

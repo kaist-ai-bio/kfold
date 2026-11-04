@@ -114,6 +114,25 @@ class KFoldForTrain(KFold):
         self.refine_stack = torch.compile(self.refine_stack, **opts)
         self.score_model.do_compile(**opts)
         self.confidence_head.do_compile(**opts)
+        if self.apo_repr_mix is not None:
+            # Compile each learned adapter's call in place. Wrapping the parent
+            # would insert _orig_mod into the audited group/checkpoint names.
+            adapters = [self.apo_repr_mix.structure_z]
+            relation = self.apo_repr_mix.confidence_relation
+            if relation is not None:
+                adapters.extend(
+                    (
+                        relation.confidence_z,
+                        relation.confidence_s,
+                        self.apo_repr_mix.apo_selector,
+                    )
+                )
+            else:
+                adapters.extend(
+                    (self.apo_repr_mix.confidence_z, self.apo_repr_mix.confidence_s)
+                )
+            for adapter in adapters:
+                adapter.compile(**opts)
 
     def _get_model_module(self, module: torch.nn.Module | None) -> torch.nn.Module | None:
         """Return the underlying module when a compiled wrapper is not used."""

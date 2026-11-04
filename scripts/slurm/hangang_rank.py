@@ -93,6 +93,23 @@ def preflight(context, directory, timeout=180):
     value = torch.tensor([rank, 1], device=f"cuda:{local_rank}", dtype=torch.float64)
     dist.all_reduce(value)
     assert value.tolist() == [size * (size - 1) // 2, size]
+    # Small, bounded probe at approximately the trainable adapter payload size.
+    # This measures the allocated ranks, rather than inferring transport speed
+    # from a successful sixteen-byte connectivity collective.
+    payload = torch.ones(1024 * 1024, device=value.device, dtype=torch.float32)
+    for _ in range(3):
+        payload.fill_(1)
+        dist.all_reduce(payload)
+    torch.cuda.synchronize()
+    dist.barrier()
+    started = time.monotonic()
+    iterations = 5
+    for _ in range(iterations):
+        payload.fill_(1)
+        dist.all_reduce(payload)
+    torch.cuda.synchronize()
+    seconds = (time.monotonic() - started) / iterations
+    assert payload[0].item() == size
     if rank == 0:
         records = [
             json.loads((directory / f"rank-{i}.json").read_text()) for i in range(size)
@@ -107,6 +124,25 @@ def preflight(context, directory, timeout=180):
             nodes=len(hosts),
             master=context["master_address"],
             all_reduce=value.tolist(),
+            collective_probe=dict(
+                bytes=payload.numel() * payload.element_size(),
+                iterations=iterations,
+                mean_seconds=seconds,
+                payload_gib_per_second=payload.numel()
+                * payload.element_size()
+                / seconds
+                / 2**30,
+            ),
+            transport_environment={
+                key: os.environ.get(key)
+                for key in (
+                    "NCCL_NET",
+                    "FI_PROVIDER",
+                    "NCCL_IB_DISABLE",
+                    "NCCL_PROTO",
+                    "TORCH_NCCL_ASYNC_ERROR_HANDLING",
+                )
+            },
         )
         (directory / "preflight-passed.json").write_text(json.dumps(receipt) + "\n")
         print("DISTRIBUTED_PREFLIGHT_PASSED", json.dumps(receipt), flush=True)

@@ -33,6 +33,13 @@ export NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,NET
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+export TORCHINDUCTOR_COMPILE_THREADS=4 MAX_JOBS=4
+# CUDA launch blocking is a debugging aid, not a production optimization.
+if [[ ${JOINT_CUDA_LAUNCH_BLOCKING:-0} == 1 ]]; then
+    export CUDA_LAUNCH_BLOCKING=1
+else
+    unset CUDA_LAUNCH_BLOCKING
+fi
 export PYTHONUNBUFFERED=1 PYTHONFAULTHANDLER=1
 export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 WANDB_MODE=disabled
 
@@ -110,6 +117,7 @@ run_step '' -- scripts/train_apo_joint_relation.py \
     --resume_from_checkpoint "$INIT_CKPT" \
     --override train.trainer.num_nodes="$NNODES" train.trainer.devices=4 \
     train.trainer.strategy=ddp train.trainer.max_steps="$MAX_STEPS" \
+    train.compile.enabled="${JOINT_COMPILE_ENABLED:-true}" \
     train.trainer.max_time="${JOINT_TRAIN_MAX_TIME:-00:23:00:00}" \
     train.trainer.limit_val_batches=0 train.trainer.enable_checkpointing=true \
     train.trainer.checkpoint_dir="$JOINT_EXPERIMENT_ROOT/checkpoints" \

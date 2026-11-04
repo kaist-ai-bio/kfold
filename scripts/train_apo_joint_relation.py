@@ -80,6 +80,43 @@ class JointTrainingAudit(pl.Callback):
         self.norms = dict.fromkeys(self.groups, 0.0)
         self.initial_step = int(trainer.global_step)
         self.started = time.monotonic()
+        self.profiler = None
+        self.profile_step = int(os.environ.get("JOINT_PROFILE_STEP", "0"))
+        mixers = module.model.apo_repr_mix
+        self.runtime = dict(
+            kernel_backend=module.model.kernel_backend,
+            precision=module.config.trainer.precision,
+            compile_enabled=module.compile_config.enabled,
+            compile_mode=module.compile_config.mode,
+            compile_dynamic=module.compile_config.dynamic,
+            compiled_adapters={
+                group: getattr(mixers.get_submodule(group), "_compiled_call_impl", None)
+                is not None
+                for group in self.groups
+            },
+            environment={
+                key: os.environ.get(key)
+                for key in (
+                    "NCCL_NET",
+                    "FI_PROVIDER",
+                    "NCCL_IB_DISABLE",
+                    "NCCL_PROTO",
+                    "TORCH_NCCL_ASYNC_ERROR_HANDLING",
+                    "OMP_NUM_THREADS",
+                    "OPENBLAS_NUM_THREADS",
+                    "MKL_NUM_THREADS",
+                    "TORCHINDUCTOR_COMPILE_THREADS",
+                    "MAX_JOBS",
+                    "CUDA_LAUNCH_BLOCKING",
+                    "TRITON_CACHE_DIR",
+                    "TORCHINDUCTOR_CACHE_DIR",
+                )
+            },
+        )
+        if module.compile_config.enabled and not all(
+            self.runtime["compiled_adapters"].values()
+        ):
+            raise AssertionError("Compilation omitted a trainable adapter group")
         if not 0 <= self.initial_step < trainer.max_steps:
             raise ValueError("Resume checkpoint must precede the requested update target")
         self.parameters = {
@@ -105,6 +142,14 @@ class JointTrainingAudit(pl.Callback):
     def on_train_batch_start(self, trainer, module, batch, batch_idx):
         self.batch_started = time.monotonic()
         self.sample_ids = [str(info.get("id", "unknown")) for info in batch[1]]
+        if trainer.is_global_zero and trainer.global_step + 1 == self.profile_step:
+            self.profiler = torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ]
+            )
+            self.profiler.__enter__()
 
     def on_before_optimizer_step(self, trainer, module, optimizer):
         self.norms = {}
@@ -137,6 +182,26 @@ class JointTrainingAudit(pl.Callback):
         return metrics
 
     def on_train_batch_end(self, trainer, module, outputs, batch, batch_idx):
+        if self.profiler is not None:
+            self.profiler.__exit__(None, None, None)
+            operators = {
+                event.key: event.count
+                for event in self.profiler.key_averages()
+                if any(
+                    name in event.key.lower()
+                    for name in ("attention", "cuequiv", "compiled region", "triton")
+                )
+            }
+            receipt = dict(
+                global_step=int(trainer.global_step),
+                runtime=self.runtime,
+                operators=operators,
+            )
+            (self.root / "kernel-profile.json").write_text(
+                json.dumps(receipt, indent=2) + "\n"
+            )
+            print("JOINT_KERNEL_PROFILE", json.dumps(receipt), flush=True)
+            self.profiler = None
         loss = outputs.get("loss") if isinstance(outputs, dict) else outputs
         if loss is not None and not torch.isfinite(torch.as_tensor(loss)).all():
             raise AssertionError("Nonfinite training loss")
@@ -169,6 +234,7 @@ class JointTrainingAudit(pl.Callback):
             global_step=int(trainer.global_step),
             target_steps=trainer.max_steps,
             validation_run=bool(os.environ.get("JOINT_VALIDATION_STEPS")),
+            runtime=self.runtime,
             trainable_parameters=self.parameters,
             nonzero_gradients=self.grad_seen,
             frozen_parameter_tensors=len(self.frozen),
@@ -239,6 +305,9 @@ class JointTrainingAudit(pl.Callback):
             )
 
     def on_exception(self, trainer, module, exception):
+        if getattr(self, "profiler", None) is not None:
+            self.profiler.__exit__(type(exception), exception, exception.__traceback__)
+            self.profiler = None
         if hasattr(self, "root"):
             self.write(
                 trainer,
