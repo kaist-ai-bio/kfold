@@ -169,8 +169,11 @@ The script never resubmits itself. A timer pause is not completion.
 Use the reviewed clean source checkout on Hangang and set `KFOLD_EXPECTED_COMMIT`
 to its full commit. The launcher reuses the existing training environment,
 `hangang_rank.py`, all-rank IPC/NCCL preflight and CXI/libfabric settings. Cache
-directories are unique per job/rank/step under `/appsdata`; short worker socket
-paths are under `/scratch`. Exact paths are recorded; no broad cleanup occurs.
+directories are under each job's `/appsdata` root. Triton binaries share a
+job/node-index/step namespace across the four ranks of that node; these are still
+on the shared filesystem, not node-local storage. Inductor graphs and CUDA caches
+remain per rank/step. Short worker socket paths are per rank under `/scratch`.
+Exact paths are recorded; no per-rank exit hook removes the shared cache.
 The launcher keeps the previously validated AWS Libfabric/CXI transport and
 bounded OMP/BLAS/compiler thread counts. Its all-rank preflight additionally times
 five 4-MiB all-reduces after warmup; this is a small payload probe, not proof of

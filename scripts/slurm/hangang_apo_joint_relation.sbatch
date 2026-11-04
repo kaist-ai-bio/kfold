@@ -98,12 +98,13 @@ run_step() {
         --error="$RUN_ROOT/${log_prefix}rank-%t.err" \
         bash -c '
             set -euo pipefail
-            # Caches are isolated by job, rank and srun step; none use $HOME.
+            # Triton binaries share an atomic cache within each allocated node;
+            # Inductor graphs, CUDA state and worker sockets remain per-rank.
             step=${SLURM_STEP_ID:-${SLURM_STEPID:?}}
             rank_root="$JOINT_CACHE_ROOT/$SLURM_PROCID/$step"
             # Keep multiprocessing Unix-socket paths below Linux sockaddr_un limits.
             export TMPDIR="/scratch/t530a05/kfold/t/$SLURM_JOB_ID/$SLURM_PROCID/$step"
-            export TRITON_CACHE_DIR="$rank_root/triton"
+            export TRITON_CACHE_DIR="$JOINT_CACHE_ROOT/triton-node-$SLURM_NODEID/$step"
             export TORCHINDUCTOR_CACHE_DIR="$rank_root/inductor"
             export CUDA_CACHE_PATH="$rank_root/cuda"
             mkdir -p "$TMPDIR" "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR" "$CUDA_CACHE_PATH"
