@@ -1,10 +1,63 @@
 """Operational range and prior-pilot reuse checks; no feature math changes."""
 import json
 import sqlite3
+import subprocess
+import time
 from pathlib import Path
 
 from kfold.affinity.preparation import digest
 from kfold.affinity.shards import decode
+
+
+def quota_headroom(output, filesystem):
+    """Parse numeric `lfs quota -g GROUP -q MOUNT`; never use df capacity."""
+    rows = [line.split() for line in output.splitlines() if line.split() and line.split()[0] == filesystem]
+    if len(rows) != 1 or len(rows[0]) != 9:
+        raise ValueError('Missing or ambiguous group quota row')
+    fields = rows[0]
+    used, soft, hard, files, file_soft, file_hard = [int(fields[i].rstrip('*')) for i in (1,2,3,5,6,7)]
+    byte_limits = [x for x in (soft,hard) if x > 0]
+    file_limits = [x for x in (file_soft,file_hard) if x > 0]
+    if not byte_limits or not file_limits:
+        raise ValueError('Enforced group quota must be available')
+    return dict(free_bytes=(min(byte_limits)-used)*1024,
+                free_files=min(file_limits)-files, used_kib=used, limit_kib=min(byte_limits))
+
+
+class StorageReserveGuard:
+    """Bounded live group checks, cached per worker for five minutes.
+
+The extra in-flight margin supplements the user's3TB reserve. Other group users
+can consume space between probes; coordinator forecasts remain required.
+"""
+    def __init__(self, policy):
+        if policy.get('mode') != 'group_filesystem_reserve':
+            raise ValueError('Unsupported storage policy')
+        if policy.get('reserve_bytes_per_filesystem') != 3_000_000_000_000:
+            raise ValueError('Expected explicit3TB group reserve')
+        self.policy = policy
+        self.checked = None
+        self.last = None
+
+    def check(self):
+        now = time.monotonic()
+        if self.checked is not None and now-self.checked < 300:
+            return self.last
+        rows = {}
+        try:
+            for fs in ('/scratch','/appsdata'):
+                result = subprocess.run(['lfs','quota','-g',self.policy['group'],'-q',fs],
+                    capture_output=True,text=True,check=True,timeout=20)
+                rows[fs] = quota_headroom(result.stdout,fs)
+            needed = self.policy['reserve_bytes_per_filesystem'] + self.policy['inflight_margin_bytes']
+            allowed = all(x['free_bytes'] >= needed and x['free_files'] >= 1000 for x in rows.values())
+            self.last = dict(allowed=allowed,observed_unix=time.time(),filesystems=rows,
+                             reserve_bytes=self.policy['reserve_bytes_per_filesystem'],
+                             inflight_margin_bytes=self.policy['inflight_margin_bytes'])
+        except (OSError,ValueError,subprocess.SubprocessError) as exc:
+            self.last = dict(allowed=False,observed_unix=time.time(),error=repr(exc),filesystems=rows)
+        self.checked = now
+        return self.last
 
 
 def index_interval(campaign):

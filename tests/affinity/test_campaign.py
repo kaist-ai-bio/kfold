@@ -65,3 +65,31 @@ def test_sealed_pilot_readback_preserves_identity_and_rejects_manifest_changes(t
         campaign.read_pilot_record(dict(entry,shard_sha256='wrong'),task,contract)
     with pytest.raises(ValueError,match='manifest identity'):
         campaign.read_pilot_record(dict(entry,cache_identity_sha256='wrong'),task,contract)
+
+
+def test_group_quota_uses_limits_instead_of_filesystem_capacity():
+    text='/scratch 17681426756 85899345920 85899345920 - 3892890 5000000 5000000 -'
+    result=campaign.quota_headroom(text,'/scratch')
+    assert result['free_bytes']==(85899345920-17681426756)*1024
+    assert result['free_files']==1107110
+    with pytest.raises(ValueError):
+        campaign.quota_headroom(text,'/appsdata')
+    with pytest.raises(ValueError):
+        campaign.quota_headroom('/scratch 1 0 0 - 1 0 0 -','/scratch')
+
+
+def test_quota_guard_pauses_on_low_space_or_unavailable_output(monkeypatch):
+    from types import SimpleNamespace
+    policy=dict(mode='group_filesystem_reserve',group='bs0247',
+        reserve_bytes_per_filesystem=3_000_000_000_000,inflight_margin_bytes=500_000_000_000)
+    def run(args,**kwargs):
+        fs=args[-1]
+        return SimpleNamespace(stdout=f'{fs} 1000000000 10000000000 10000000000 - 1 5000000 5000000 -')
+    monkeypatch.setattr(campaign.subprocess,'run',run)
+    assert campaign.StorageReserveGuard(policy).check()['allowed']
+    monkeypatch.setattr(campaign.subprocess,'run',lambda args,**k: SimpleNamespace(
+        stdout=f'{args[-1]} 8000000000 10000000000 10000000000 - 1 5000000 5000000 -'))
+    report=campaign.StorageReserveGuard(policy).check()
+    assert not report['allowed'] and 'error' not in report
+    monkeypatch.setattr(campaign.subprocess,'run',lambda *a,**k: SimpleNamespace(stdout=''))
+    assert 'error' in campaign.StorageReserveGuard(policy).check()

@@ -24,7 +24,7 @@ from kfold.inference.query import Query, ProteinSequence, LigandSequence
 from kfold.inference.runner import KFoldRunner
 from kfold.model import KFold
 from run_feature_pilot import sha, save
-from feature_campaign import index_interval, chunk_interval, validate_cached_record, read_pilot_record
+from feature_campaign import index_interval, chunk_interval, validate_cached_record, read_pilot_record, StorageReserveGuard
 
 STOP = False
 
@@ -94,7 +94,10 @@ def main():
     cpath = Path(a.campaign)
     c = json.loads(cpath.read_text())
     assert c.get('execution_authorized', True) is True, 'Prepared campaign is not released for execution'
-    assert c['pilot_gate_passed'] is True and c['projected_total_bytes'] <= 60_000_000_000_000
+    assert c['pilot_gate_passed'] is True
+    if 'storage_policy' not in c:
+        # Existing immutable campaigns retain their saved ceiling until migrated.
+        assert c['projected_total_bytes'] <= c['total_storage_ceiling_bytes']
     first_index, last_index = index_interval(c)
     reuse = {}
     if c.get('reuse_manifest'):
@@ -105,8 +108,16 @@ def main():
     rank = int(os.environ.get('SLURM_PROCID', '0'))
     world = int(os.environ.get('SLURM_NTASKS', '1'))
     job = os.environ.get('SLURM_JOB_ID', 'manual')
+    storage_guard = StorageReserveGuard(c['storage_policy']) if 'storage_policy' in c else None
     def stopping():
-        return STOP or (root/'STOP').exists() or (root/'stop-jobs'/job).exists()
+        if STOP or (root/'STOP').exists() or (root/'stop-jobs'/job).exists():
+            return True
+        if storage_guard is not None:
+            report = storage_guard.check()
+            if not report['allowed']:
+                save(logdir/'quota-pause.json',report)
+                return True
+        return False
     logdir = root/'workers'/f'{job}-{rank:04d}'
     logdir.mkdir(parents=True, exist_ok=True)
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGUSR1):

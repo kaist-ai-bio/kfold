@@ -31,6 +31,10 @@ def main():
     c.update(systems=2796376,first_system_index=1459112,last_system_index=2796376,
              execution_authorized=False,projected_total_bytes=55_546_530_000_000,
              source_scope='Synthetic assumed-negative appended interval only; original registry/campaign unchanged')
+    c.pop('total_storage_ceiling_bytes',None)
+    c['storage_policy'] = dict(mode='group_filesystem_reserve',group='bs0247',
+        reserve_bytes_per_filesystem=3_000_000_000_000,inflight_margin_bytes=500_000_000_000,
+        filesystems=['/scratch','/appsdata'],project_cap_bytes=None)
     c['feature_contract']['registry_sha256'] = CHILD_SHA
     pilot_contract = json.loads((a.pilot_results/'contract.json').read_text())
     if pilot_contract['feature'] != c['feature_contract']:
@@ -89,7 +93,7 @@ def main():
                 decoy_inputs=last-first+1,new_gpu_inputs=last-first+1-56,
                 original_raw_unchanged=True,shards=shards,registry_sha256=CHILD_SHA,
                 draft_sha256=sha(a.out/'campaign.draft.json'),
-                remaining_gate='User storage staged-plan decision and live96GPU/5jobs budget',
+                remaining_gate='Operational canary, live3TB group reserves and96GPU/5jobs budget',
                 feature_source_revision=c['feature_contract']['code_revision'],
                 pilot_final=final)
     save(a.out/'preparation-receipt.json',report)
