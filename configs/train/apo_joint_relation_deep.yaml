@@ -1,0 +1,7 @@
+_yaml_: apo_joint_relation.yaml
+model:
+  apo_repr_mix:
+    relation_depth: 3
+train:
+  name: apo-joint-relation-deep
+

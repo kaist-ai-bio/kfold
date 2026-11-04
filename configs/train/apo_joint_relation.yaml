@@ -1,0 +1,45 @@
+# New adapters start from the original full stage-3 71K checkpoint, not Mix 5K.
+_yaml_: apo_repr_mix.yaml
+model:
+  apo_repr_mix:
+    weighted_structure: true
+    relation_depth: 1
+    relation_hidden: 64
+    utility_rollout_fraction: 0.25
+    utility_loss_weight: 0.01
+train:
+  name: apo-joint-relation
+  seed: 3
+  load_opt_state: false
+  load_global_step: false
+  init_from_ema: ['trunk']
+  compile:
+    enabled: false
+  data:
+    train_batch_size: 1
+    max_tokens: 768
+    max_apo: 3
+  training:
+    train_trunk: false
+    train_diffusion_head: false
+    train_confidence_head: false
+    diffusion_batch_size: 4
+    num_mini_rollout_steps: 30
+    num_mini_rollout_samples: 1
+    parcae:
+      min_recycles: 1
+      max_recycles: 1
+    soar:
+      enabled: false
+  optimizer:
+    max_lr: 0.0001
+    lr_warmup_no_steps: 100
+  trainer:
+    max_steps: 5000
+    max_time: '00:23:00:00'
+    limit_val_batches: 0
+    accumulate_grad_batches: 1
+    checkpoint_every_n_train_steps: 500
+    checkpoint_save_last: true
+    log_every_n_steps: 10
+

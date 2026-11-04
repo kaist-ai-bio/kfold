@@ -121,7 +121,9 @@ class KFoldForTrain(KFold):
             return getattr(module, "_orig_mod", module)
         return module
 
-    def _encode_lm_single(self, f_input: FoldingInput) -> torch.Tensor:
+    def _encode_lm_single(
+        self, f_input: FoldingInput, *, feature_taps: dict | None = None
+    ) -> torch.Tensor:
         """Merge the enabled pretrained encoders into the shared LM single."""
         prot_seq_encoder = self._get_model_module(self.prot_seq_encoder)
         rna_seq_encoder = self._get_model_module(self.rna_seq_encoder)
@@ -134,7 +136,8 @@ class KFoldForTrain(KFold):
             s_lm = s_lm + self.rna_seq_to_s_lm(rna_seq_encoder(f_input))
 
         if prot_struct_encoder is not None:
-            s_lm = s_lm + self.prot_struct_to_s_lm(prot_struct_encoder(f_input))
+            structure_single = prot_struct_encoder(f_input, feature_taps=feature_taps)
+            s_lm = s_lm + self.prot_struct_to_s_lm(structure_single)
 
         return s_lm
 
@@ -143,6 +146,8 @@ class KFoldForTrain(KFold):
         f_input: FoldingInput,
         num_recycles: int,
         grad_recurrence_steps: int = 0,
+        *,
+        feature_taps: dict | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Perform the forward pass.
 
@@ -185,7 +190,7 @@ class KFoldForTrain(KFold):
         z_inputs = z_inputs.float()  # cast to float32 for numerical stability
 
         # Embedding of the apo state into the pair representation.
-        z_inputs = z_inputs + apo_stack(f_input)
+        z_inputs = z_inputs + apo_stack(f_input, feature_taps=feature_taps)
 
         # Initialize an independent pair-state z_0 instead of recycling from zeros.
         z = self._init_parcae_pair_state(z_inputs)
@@ -193,7 +198,7 @@ class KFoldForTrain(KFold):
         pair_mask = token_mask[..., None] & token_mask[..., None, :]
 
         # Extract LM representation
-        s_lm = self._encode_lm_single(f_input)
+        s_lm = self._encode_lm_single(f_input, feature_taps=feature_taps)
         z_lm = self.lm_to_pair(s_lm)
 
         # Main trunk iteration with Parcae recurrence
@@ -320,6 +325,8 @@ class KFoldForTrain(KFold):
             z, z_conf, lm_conf = mix_representations(
                 self, f_input, s_inputs, s_lm, z, num_recycles, training=self.training
             )
+        apo_relation = getattr(self.apo_repr_mix, "confidence_relation", None)
+        apo_context = self.last_apo_mix_context if apo_relation is not None else None
 
         if train_trunk:
             # Distogram head
@@ -351,11 +358,45 @@ class KFoldForTrain(KFold):
         if train_confidence_module or self.apo_repr_mix is not None:
             # Stop gradients to input features and trunk outputs.
             # Sample structures with diffusion mini-rollout.
+            sample_input, sample_z = f_input, z
+            utility_branch = -1
+            if apo_relation is not None:
+                # Observe a random fixed-base branch's generated quality without
+                # adding another mini-rollout.
+                # This samples a training target; it never routes by learned U.
+                available = apo_context["valid"].any(0).nonzero().flatten()
+                fraction = self.apo_repr_mix_config.utility_rollout_fraction
+                if self.training and available.numel() and fraction > 0:
+                    devices = (
+                        [
+                            device.index
+                            if device.index is not None
+                            else torch.cuda.current_device()
+                        ]
+                        if device.type == "cuda"
+                        else []
+                    )
+                    # Utility-target sampling must not advance the baseline
+                    # diffusion stream, including when disabled for identity QA.
+                    with torch.random.fork_rng(devices=devices):
+                        if torch.rand((), device=device) < fraction:
+                            draw = torch.randint(available.numel(), (), device=device)
+                            utility_branch = int(available[draw].item())
+                if utility_branch >= 0:
+                    sample_input = apo_context["branches"][utility_branch]
+                    sample_z = apo_context["branch_z"][:, utility_branch]
+                dict_out["apo_utility"] = {
+                    "scores": self.apo_repr_mix.apo_selector(
+                        f_input, apo_context, s_inputs
+                    ),
+                    "branch_index": utility_branch,
+                    "valid": apo_context["valid"],
+                }
             with torch.no_grad(), torch.autocast(device.type, enabled=False):
                 coordinates = self.diffusion_head.sample_structure(
-                    f_input=f_input,
+                    f_input=sample_input,
                     s_inputs=s_inputs,
-                    z=z,
+                    z=sample_z,
                     num_steps=num_mini_rollout_steps,
                     num_samples=num_mini_rollout_samples,
                 )["coordinates"]  # [B, N_samples, Latom, 3]
@@ -380,6 +421,8 @@ class KFoldForTrain(KFold):
                 _s_lm,
                 _z,
                 coordinates,
+                apo_relation=apo_relation,
+                apo_context=apo_context,
             )
 
         return dict_out
@@ -432,6 +475,8 @@ class KFoldForTrain(KFold):
             z, z_conf, lm_conf = mix_representations(
                 self, f_input, s_inputs, s_lm, z, num_recycles, training=self.training
             )
+        apo_relation = getattr(self.apo_repr_mix, "confidence_relation", None)
+        apo_context = self.last_apo_mix_context if apo_relation is not None else None
 
         # Distogram head
         dict_out["distogram"] = self.distogram_head.forward_inference(f_input, z)
@@ -455,7 +500,13 @@ class KFoldForTrain(KFold):
             lm_conf,
             z_conf,
             coords,
+            apo_relation=apo_relation,
+            apo_context=apo_context,
         )
+        if apo_relation is not None:
+            dict_out["apo_utility"] = {
+                "scores": self.apo_repr_mix.apo_selector(f_input, apo_context, s_inputs),
+            }
         # Remove batch dimension from outputs for validation
         dict_out = {
             k: {kk: vv.squeeze(0) for kk, vv in v.items()} for k, v in dict_out.items()

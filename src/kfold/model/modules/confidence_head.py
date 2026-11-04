@@ -311,6 +311,9 @@ class ConfidenceHead(torch.nn.Module):
         s_lm: torch.Tensor,
         z: torch.Tensor,
         x_pred: torch.Tensor,
+        *,
+        apo_relation: torch.nn.Module | None = None,
+        apo_context: dict | None = None,
     ) -> dict[str, torch.Tensor]:
         """Forward pass of confidence head module.
 
@@ -343,7 +346,11 @@ class ConfidenceHead(torch.nn.Module):
         repr_idx = f_input.token.repr_index.unsqueeze(-2)  # [B, 1, Ntoken]
         x_repr = gather_dim(x_pred, dim=-2, index=repr_idx[..., None])
 
+        if apo_relation is not None and apo_context is None:
+            raise ValueError("Candidate-conditioned apo confidence requires apo context.")
+
         s_inputs, s_lm, z = s_inputs.to(dtype), s_lm.to(dtype), z.to(dtype)
+        trunk_z = z
         s = self.s_lm_to_s(s_lm)
 
         z = (
@@ -368,8 +375,18 @@ class ConfidenceHead(torch.nn.Module):
         # Process each sample in the batch separately to save memory
         mask = f_input.token.pad_mask
         for i in range(N):
+            candidate_z, candidate_s = z, s
+            if apo_relation is not None:
+                # Keep the apo axis until the particular candidate queries it.
+                # The relation is passed in, rather than registered twice under
+                # both the confidence head and the mixer checkpoint namespace.
+                delta_z, delta_lm = apo_relation(
+                    f_input, apo_context, trunk_z, s_inputs, x_repr[:, i]
+                )
+                candidate_z = z + delta_z.to(dtype)
+                candidate_s = self.s_lm_to_s(s_lm + delta_lm.to(dtype))
             _pae_logits, _pde_logits, _plddt_logits, _resolved_logits = (
-                self.forward_single(z, s, x_repr[:, i], mask=mask)
+                self.forward_single(candidate_z, candidate_s, x_repr[:, i], mask=mask)
             )
             pae_logits[:, i] = _pae_logits
             pde_logits[:, i] = _pde_logits

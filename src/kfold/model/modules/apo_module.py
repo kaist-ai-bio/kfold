@@ -305,6 +305,8 @@ class ApoModule(torch.nn.Module):
     def forward(
         self,
         f_input: FoldingInput,
+        *,
+        feature_taps: dict | None = None,
     ) -> torch.Tensor:
         """Return an apo pair update of shape ``[B, L, L, C_z]``."""
         pseudo_beta = f_input.token.apo_repr_coords.transpose(1, 2)
@@ -315,6 +317,13 @@ class ApoModule(torch.nn.Module):
 
         B, T, L, _ = pseudo_beta.shape
         if T == 0:
+            if feature_taps is not None:
+                feature_taps["apo_pair"] = pseudo_beta.new_zeros(
+                    B, 0, L, L, self.channel_apo
+                ).detach()
+                feature_taps["apo_pair_mask"] = torch.zeros(
+                    B, 0, L, L, device=pseudo_beta.device, dtype=torch.bool
+                )
             return pseudo_beta.new_zeros(B, L, L, self.channel_z)
 
         token_mask = f_input.token.pad_mask[:, None, :]
@@ -386,6 +395,9 @@ class ApoModule(torch.nn.Module):
 
         # Average over apo structures
         v = v * pair_mask[..., None]
+        if feature_taps is not None:
+            feature_taps["apo_pair"] = v.detach()
+            feature_taps["apo_pair_mask"] = pair_mask.detach()
         u = v.sum(dim=1)
         num_valid_apo = pair_mask.sum(dim=1).clamp(min=1)
         u = u / num_valid_apo[..., None]

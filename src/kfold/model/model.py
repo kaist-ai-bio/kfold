@@ -319,6 +319,8 @@ class KFold(torch.nn.Module):
         return_distogram: bool = False,
         return_traj: bool = False,
         max_apo_combinations: int | None = None,
+        apo_selection_top_k: int | None = None,
+        apo_selection_pool_size: int = 32,
     ) -> dict[str, dict[str, torch.Tensor]]:
         """Run KFold structure prediction from a fully prepared input.
 
@@ -366,6 +368,8 @@ class KFold(torch.nn.Module):
             return_distogram=return_distogram,
             return_traj=return_traj,
             max_apo_combinations=max_apo_combinations,
+            apo_selection_top_k=apo_selection_top_k,
+            apo_selection_pool_size=apo_selection_pool_size,
         )
 
         # remove batch dimension
@@ -388,6 +392,8 @@ class KFold(torch.nn.Module):
         return_distogram: bool = False,
         return_traj: bool = False,
         max_apo_combinations: int | None = None,
+        apo_selection_top_k: int | None = None,
+        apo_selection_pool_size: int = 32,
     ) -> dict[str, dict[str, torch.Tensor]]:
         """Forward pass of KFold model for model training.
 
@@ -425,14 +431,37 @@ class KFold(torch.nn.Module):
                 "Batched input with batch_size > 1 is not supported for inference yet."
             )
 
+        preselected = None
+        if apo_selection_top_k is not None:
+            from kfold.model.modules.apo_selection import select_scored_combinations
+
+            scored = self.score_apo_combinations(f_input, apo_selection_pool_size)
+            preselected = select_scored_combinations(scored, apo_selection_top_k)
+            self.last_apo_selection_assignments = scored["assignments"]
+            dict_out["apo_selection"] = {
+                "pool_scores": scored["scores"],
+                "selected_indices": preselected["indices"]
+                if preselected is not None
+                else torch.empty(1, 0, device=f_input.device, dtype=torch.long),
+            }
+
         # Trunk with recycling
         s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles)
         z = z.float()
         z_conf, lm_conf = z, s_lm
         if self.apo_repr_mix is not None:
             z, z_conf, lm_conf = mix_representations(
-                self, f_input, s_inputs, s_lm, z, num_recycles, max_apo_combinations
+                self,
+                f_input,
+                s_inputs,
+                s_lm,
+                z,
+                num_recycles,
+                max_apo_combinations,
+                preselected=preselected,
             )
+        apo_relation = getattr(self.apo_repr_mix, "confidence_relation", None)
+        apo_context = self.last_apo_mix_context if apo_relation is not None else None
 
         if return_embeddings:
             dict_out["trunk"] = {
@@ -464,11 +493,27 @@ class KFold(torch.nn.Module):
             lm_conf,
             z_conf,
             coords,
+            apo_relation=apo_relation,
+            apo_context=apo_context,
         )
+        if apo_relation is not None:
+            dict_out["apo_utility"] = {
+                "scores": self.apo_repr_mix.apo_selector(f_input, apo_context, s_inputs),
+            }
 
         return dict_out
 
-    def _encode_lm_single(self, f_input: FoldingInput) -> torch.Tensor:
+    def score_apo_combinations(
+        self, f_input: FoldingInput, *, max_combinations: int = 3
+    ) -> dict:
+        """Score a B=1 apo-combination pool before running the folding trunk."""
+        from kfold.model.modules.apo_selection import score_apo_combinations
+
+        return score_apo_combinations(self, f_input, max_combinations)
+
+    def _encode_lm_single(
+        self, f_input: FoldingInput, *, feature_taps: dict | None = None
+    ) -> torch.Tensor:
         """Merge the enabled pretrained encoders into the shared LM single."""
         with self._encoder_on_device(self.prot_seq_encoder, f_input.device):
             s_lm = self.prot_seq_to_s_lm(self.prot_seq_encoder(f_input))
@@ -481,7 +526,10 @@ class KFold(torch.nn.Module):
             with self._encoder_on_device(
                 self.prot_struct_encoder.encoder, f_input.device
             ):
-                s_lm = s_lm + self.prot_struct_to_s_lm(self.prot_struct_encoder(f_input))
+                structure_single = self.prot_struct_encoder(
+                    f_input, feature_taps=feature_taps
+                )
+                s_lm = s_lm + self.prot_struct_to_s_lm(structure_single)
 
         return s_lm
 
@@ -503,6 +551,8 @@ class KFold(torch.nn.Module):
         self,
         f_input: FoldingInput,
         num_recycles: int,
+        *,
+        feature_taps: dict | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Perform the forward pass.
 
@@ -533,7 +583,7 @@ class KFold(torch.nn.Module):
         s_inputs, z_inputs = self.input_embedder(f_input)
 
         # Embedding of the apo state into the pair representation.
-        z_inputs = z_inputs + self.apo_module(f_input)
+        z_inputs = z_inputs + self.apo_module(f_input, feature_taps=feature_taps)
 
         # Initialize an independent pair-state z_0 instead of recycling from zeros.
         z = self._init_parcae_pair_state(z_inputs)
@@ -541,7 +591,7 @@ class KFold(torch.nn.Module):
         pair_mask = token_mask[..., None] & token_mask[..., None, :]
 
         # Extract LM representation
-        s_lm = self._encode_lm_single(f_input)
+        s_lm = self._encode_lm_single(f_input, feature_taps=feature_taps)
         z_lm = self.lm_to_pair(s_lm)
 
         # Main trunk iteration with Parcae recurrence

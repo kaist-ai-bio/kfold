@@ -34,6 +34,7 @@ from kfold.utils.config import to_dict
 from kfold.utils.geometry.rigid_align import compute_rmsd
 
 from . import loss as loss_fn
+from .apo_utility import compute_apo_utility_loss
 from .metrics import structure_metrics as validation_metrics
 from .optim.ema import ExponentialMovingAverage
 from .optim.lr_scheduler import AF3LRScheduler
@@ -477,6 +478,8 @@ class KFoldTrainingModule(pl.LightningModule):
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Compute losses of given the model output."""
         f_input, struct_info = batch
+        utility_loss = None
+        utility_metrics = {}
 
         # NOTE: Compute the losses in float32 for better numerical stability
         # Compute losses
@@ -537,6 +540,15 @@ class KFoldTrainingModule(pl.LightningModule):
             # Log the rmsd between mini-rollout sample and GT.
             rmsd = compute_rmsd(x_pred, x_gt, mask_gt, align=True)  # [B, Nsample]
             sample_metrics = {"mini_rollout_rmsd": rmsd.mean()}
+            if "apo_utility" in model_output:
+                utility_loss, utility_metrics = compute_apo_utility_loss(
+                    model_output["apo_utility"],
+                    f_input,
+                    x_pred,
+                    x_gt,
+                    mask_gt,
+                    confidence_loss_mask,
+                )
 
         else:
             confidence_loss, confidence_metrics = 0.0, {}
@@ -551,6 +563,10 @@ class KFoldTrainingModule(pl.LightningModule):
             + loss_weights["confidence"] * confidence_loss
             + loss_weights["patch_geometry"] * patch_geometry_loss
         )  # [B,]
+        if utility_loss is not None:
+            loss = (
+                loss + self.model.apo_repr_mix_config.utility_loss_weight * utility_loss
+            )
         assert torch.is_tensor(loss), "Loss must be a torch.Tensor."
 
         # Log loss and metrics
@@ -559,6 +575,7 @@ class KFoldTrainingModule(pl.LightningModule):
             | diffusion_metrics
             | confidence_metrics
             | sample_metrics
+            | utility_metrics
         )
         all_metrics["loss"] = loss.detach()
 

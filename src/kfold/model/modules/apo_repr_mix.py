@@ -17,6 +17,11 @@ class ApoReprMixConfig:
     chunk_size: int = 1024
     max_combinations: int = 3
     train_max_apo: int = 3
+    weighted_structure: bool = False
+    relation_depth: int = 0
+    relation_hidden: int = 64
+    utility_rollout_fraction: float = 0.25
+    utility_loss_weight: float = 0.01
 
     def __post_init__(self):
         if (
@@ -24,6 +29,10 @@ class ApoReprMixConfig:
             < 1
         ):
             raise ValueError("Apo mixer sizes and combination limits must be positive")
+        if self.relation_depth < 0 or self.relation_hidden < 1:
+            raise ValueError("Invalid apo relation depth/hidden size")
+        if not 0 <= self.utility_rollout_fraction <= 1 or self.utility_loss_weight < 0:
+            raise ValueError("Invalid utility rollout fraction/loss weight")
 
 
 class ResidualSetMixer(nn.Module):
@@ -65,15 +74,69 @@ class ResidualSetMixer(nn.Module):
         return base + torch.cat(deltas, dim=1).reshape(shape).to(base.dtype)
 
 
+class WeightedResidualSetMixer(ResidualSetMixer):
+    """Learn a separate K-axis weight for each full-complex post-trunk pair."""
+
+    def __init__(self, channels, hidden, chunk_size):
+        super().__init__(channels, hidden, chunk_size)
+        self.score = nn.Linear(hidden, 1)
+        nn.init.zeros_(self.score.weight)
+        nn.init.zeros_(self.score.bias)
+
+    def _chunk(self, base, peers, valid):
+        h = self.phi(torch.cat((peers, peers - base[:, None]), dim=-1))
+        mask = valid[:, :, None].expand(*h.shape[:-1])
+        logits = self.score(h).squeeze(-1).float().masked_fill(~mask, -torch.inf)
+        # A null reference lets the model suppress all unhelpful branches.
+        logits = torch.cat((logits, torch.zeros_like(logits[:, :1])), 1)
+        weights = logits.softmax(1)[:, :-1].to(h.dtype)
+        pooled = (h * weights[..., None]).sum(1)
+        delta = self.out(self.rho(torch.cat((base, pooled), -1)))
+        return delta * valid.any(1)[:, None, None]
+
+
 class ApoRepresentationMixers(nn.Module):
     def __init__(self, channel_z, channel_s, config):
         super().__init__()
-        self.structure_z = ResidualSetMixer(channel_z, config.hidden, config.chunk_size)
-        self.confidence_z = ResidualSetMixer(channel_z, config.hidden, config.chunk_size)
-        self.confidence_s = ResidualSetMixer(channel_s, config.hidden, config.chunk_size)
+        initial_rng = torch.random.get_rng_state()
+        mixer_cls = (
+            WeightedResidualSetMixer if config.weighted_structure else ResidualSetMixer
+        )
+        self.structure_z = mixer_cls(channel_z, config.hidden, config.chunk_size)
+        self.confidence_relation = None
+        self.apo_selector = None
+        if config.relation_depth:
+            from kfold.model.modules.apo_relation import (
+                ApoCandidateRelation,
+                ApoUtilityHead,
+            )
+
+            self.confidence_z = self.confidence_s = None
+            self.confidence_relation = ApoCandidateRelation(channel_z, channel_s, config)
+            self.apo_selector = ApoUtilityHead(channel_s, config.relation_hidden)
+        else:
+            self.confidence_z = ResidualSetMixer(
+                channel_z, config.hidden, config.chunk_size
+            )
+            self.confidence_s = ResidualSetMixer(
+                channel_s, config.hidden, config.chunk_size
+            )
+        if config.relation_depth > 1:
+            # Depth must not also change the random initialization of every
+            # shared projection, selector, and generation mixer in the comparison.
+            with torch.random.fork_rng(devices=[]):
+                torch.random.set_rng_state(initial_rng)
+                shallow = ApoRepresentationMixers(
+                    channel_z, channel_s, replace(config, relation_depth=1)
+                )
+            state = self.state_dict()
+            state.update(shallow.state_dict())
+            self.load_state_dict(state, strict=True)
 
     def forward(self, z, s, branch_z, branch_s, valid):
         # Never share trainable parameters or pass confidence gradients to structure_z.
+        if self.confidence_relation is not None:
+            return self.structure_z(z, branch_z, valid), z, s
         return (
             self.structure_z(z, branch_z, valid),
             self.confidence_z(z, branch_z, valid),
@@ -197,7 +260,15 @@ def make_apo_branches(f, cap, train_max_apo=None):
 
 
 def mix_representations(
-    model, f, s, lm, z, num_recycles, max_combinations=None, training=False
+    model,
+    f,
+    s,
+    lm,
+    z,
+    num_recycles,
+    max_combinations=None,
+    training=False,
+    preselected=None,
 ):
     """Keep the baseline RNG stream intact, including at zero initialization."""
     config = model.apo_repr_mix_config
@@ -209,18 +280,57 @@ def mix_representations(
         if f.device.type == "cuda"
         else []
     )
-    zs, ss = [], []
+    zs, ss, taps = [], [], []
     with torch.random.fork_rng(devices=devices), torch.no_grad():
-        branches, valid, assignments = make_apo_branches(
-            f, cap, config.train_max_apo if training else None
-        )
+        if preselected is None:
+            branches, valid, assignments = make_apo_branches(
+                f, cap, config.train_max_apo if training else None
+            )
+        else:
+            if training:
+                raise ValueError("Apo preselection is inference-only")
+            branches = preselected["branches"]
+            valid = preselected["valid"]
+            assignments = preselected["assignments"]
         for branch in branches:
             # Every branch sees the same dropout stream, independent of branch order.
             with torch.random.fork_rng(devices=devices):
-                _, branch_s, branch_z = model.run_trunk(branch, num_recycles)
+                if config.relation_depth:
+                    capture = {}
+                    _, branch_s, branch_z = model.run_trunk(
+                        branch, num_recycles, feature_taps=capture
+                    )
+                    taps.append(capture)
+                else:
+                    _, branch_s, branch_z = model.run_trunk(branch, num_recycles)
             zs.append(branch_z.detach())
             ss.append(branch_s.detach())
     model.last_apo_mix_assignments = assignments
+    if config.relation_depth:
+        context = {
+            name: torch.cat([tap[name] for tap in taps], 1)
+            for name in ("apo_single", "apo_single_mask", "apo_pair", "apo_pair_mask")
+        }
+        with torch.no_grad():
+            coords = torch.stack(
+                [branch.token.apo_repr_coords[:, :, 0] for branch in branches], 1
+            )
+            masks = torch.stack(
+                [branch.token.apo_repr_mask[:, :, 0] for branch in branches], 1
+            )
+            geom_mask = (
+                context["apo_pair_mask"] & masks[..., :, None] & masks[..., None, :]
+            )
+            distance = torch.cdist(coords.float(), coords.float())
+            context["apo_distance"] = distance.masked_fill(~geom_mask, 0).detach()
+            context["apo_distance_mask"] = geom_mask
+        context.update(
+            valid=valid,
+            branches=branches,
+            branch_z=torch.stack(zs, 1),
+            branch_s=torch.stack(ss, 1),
+        )
+        model.last_apo_mix_context = context
     return model.apo_repr_mix(
         z.detach(), lm.detach(), torch.stack(zs, 1), torch.stack(ss, 1), valid
     )
