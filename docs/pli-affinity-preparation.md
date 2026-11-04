@@ -133,3 +133,33 @@ indices/metadata, compression, staging and replicas. Audit readiness stays false
 
 Tests use small synthetic tensors and a stochastic toy trunk; a real checkpoint,
 GPU, full corpus, codec throughput, and training/resume remain unverified.
+
+## Validation source preparation (2026-11-04)
+
+User decisions: retain training records for the 92-drug kinase screen and use it
+to evaluate existing-drug selectivity, reporting seen/unseen target-drug pairs.
+For ChEMBL, use the source database boundary used by SAIR, not SAIR's release
+date or an arbitrary journal-year cutoff. SAIR section 2.1 specifies ChEMBL35
+and BindingDB1Q2025 without a separate publication-year filter in that section.
+The colleague's extra BindingDB source must also be checked for overlap.
+
+The source-audit scripts in `scripts/affinity/` preserve raw API pages, version
+checks, source IDs, chemical overlap keys, original assay endpoints, censored
+values and exclusion reasons. `fetch_chembl_release_delta.py` collects documents
+first indexed in ChEMBL36/37 without restricting publication year. This is a
+new-document subset, not a full activity-level release diff; added activities in
+older documents still need a full-dump comparison. An initial year>=2025 subset
+was audited first and must not be reported as the complete post-SAIR population.
+
+`audit_validation_overlap.py` and `curate_chembl_validation.py` run on allocated
+CPU nodes with staged inputs. Chemical identity flags are provisional: the
+neutralized largest-fragment key removes stereo/isomeric distinctions but does
+not canonicalize tautomers or adjudicate source structures. The reference
+sequence does not establish the experimental construct. Publication dates are
+retained separately and do not silently select a split. Metadata curation does
+not launch backbone features or head training.
+
+The MacMini operational report is `docs/pli-validation-candidates-20261104.md`
+in the primary project; remote inputs/results remain under the recorded Messi
+experiment path. Keep raw labels and full feature-generation membership distinct
+from the final training manifest, which is not yet recovered.
