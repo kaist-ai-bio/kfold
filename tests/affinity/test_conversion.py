@@ -13,6 +13,7 @@ def prepared(tmp_path):
     records = {}
     for i in range(2):
         source, views, recipe = fixture()
+        source['bin_boundaries'].fill_(12.)  # Official edges for this two-bin fixture.
         source['receipt']['system_id'] = str(i)
         source['cache_identity_sha256'] = digest(source['receipt'])
         store.add(str(i), source)
@@ -81,3 +82,22 @@ def test_pilot_cannot_be_silently_promoted_to_training_cache(tmp_path):
     with pytest.raises(ValueError, match='scientific crop receipts'):
         run(source, tmp_path/'out', plan)
     assert not (tmp_path/'out').exists()
+
+
+def test_shuffle_conversion_resume_and_head_loader(tmp_path):
+    from kfold.affinity.shards import SHUFFLE_CODEC
+    from kfold.affinity.head_inputs import compact_head_inputs
+    source, plan = prepared(tmp_path)
+    plan['storage_codec'] = SHUFFLE_CODEC
+    checked = []
+    def validate(s, c):
+        for view in c['view_indices']:
+            compact_head_inputs(c, view)
+            checked.append(view)
+    result = run(source, tmp_path/'out', plan, validator=validate)
+    assert checked and result['storage_codec'] == SHUFFLE_CODEC
+    assert run(source, tmp_path/'out', plan, validator=validate) == result
+    changed = copy.deepcopy(plan); changed['storage_codec'] = 'zlib1'
+    with pytest.raises(ValueError, match='changed on resume'):
+        run(source, tmp_path/'out', changed)
+    assert file_sha(source) == plan['source_sha256']

@@ -3,20 +3,69 @@
 One writer per directory. A committed partial shard is recoverable; completed
 shards are immutable. SHA256 validates compressed and decoded payload bytes.
 """
-import hashlib, io, json, sqlite3, zlib
+import hashlib, io, json, sqlite3, struct, zlib
 from pathlib import Path
 import torch
 
 def sha_bytes(b):return hashlib.sha256(b).hexdigest()
 
-def encode(payload):
+LEGACY_CODEC = 'zlib1'
+SHUFFLE_CODEC = 'shuffle2-zlib6-v1'
+_MAGIC = b'KFCS'
+_HEADER = struct.Struct('>4sBQ')  # magic, version, uncompressed byte count
+
+
+def validate_codec(codec):
+    if codec not in (LEGACY_CODEC, SHUFFLE_CODEC):
+        raise ValueError('Unknown shard codec: ' + str(codec))
+    return codec
+
+
+def compress_bytes(raw, codec=LEGACY_CODEC):
+    validate_codec(codec)
+    if codec == LEGACY_CODEC:
+        return zlib.compress(raw, 1)
+    shuffled = raw[::2] + raw[1::2]
+    return _HEADER.pack(_MAGIC, 1, len(raw)) + zlib.compress(shuffled, 6)
+
+
+def decompress_bytes(blob):
+    framed = blob.startswith(_MAGIC)
+    if framed:
+        if len(blob) < _HEADER.size:
+            raise ValueError('Truncated shard codec header')
+        _, version, size = _HEADER.unpack_from(blob)
+        if version != 1:
+            raise ValueError('Unknown shard codec version')
+        compressed = blob[_HEADER.size:]
+    else:
+        compressed = blob
+    stream = zlib.decompressobj()
+    try:
+        # For framed payloads, reject output exceeding the declared length.
+        raw = stream.decompress(compressed, size + 1) if framed else stream.decompress(compressed)
+    except (zlib.error, OverflowError) as exc:
+        raise ValueError('Invalid compressed payload') from exc
+    if not stream.eof or stream.unused_data or stream.unconsumed_tail:
+        raise ValueError('Incomplete or trailing compressed payload')
+    if framed:
+        if len(raw) != size:
+            raise ValueError('Shard codec decoded length mismatch')
+        restored = bytearray(size)
+        middle = (size + 1) // 2
+        restored[::2], restored[1::2] = raw[:middle], raw[middle:]
+        raw = bytes(restored)
+    return raw
+
+
+def encode(payload, codec=LEGACY_CODEC):
     f=io.BytesIO();torch.save(payload,f);raw=f.getvalue()
-    blob=zlib.compress(raw,1)
+    blob=compress_bytes(raw,codec)
     return blob,sha_bytes(blob),sha_bytes(raw),len(raw)
 
 def decode(blob,blob_sha,raw_sha):
     if sha_bytes(blob)!=blob_sha:raise ValueError('Compressed payload checksum mismatch')
-    raw=zlib.decompress(blob)
+    raw=decompress_bytes(blob)
     if sha_bytes(raw)!=raw_sha:raise ValueError('Decoded payload checksum mismatch')
     return torch.load(io.BytesIO(raw),map_location='cpu',weights_only=True)
 
@@ -30,7 +79,8 @@ def publish_receipt(path, count, contract_id):
     tmp.replace(receipt)
 
 class ShardStore:
-    def __init__(self,root,contract_id,max_bytes=1024**3):
+    def __init__(self,root,contract_id,max_bytes=1024**3,*,codec=LEGACY_CODEC):
+        self.codec=validate_codec(codec)
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
         self.contract_id=contract_id;self.max_bytes=max_bytes;self.entries={};self.db=None
         files=sorted(self.root.glob('shard-*.sqlite*'))
@@ -41,6 +91,10 @@ class ShardStore:
             c=sqlite3.connect(p)
             assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
             assert c.execute("SELECT value FROM metadata WHERE key='contract_id'").fetchone()[0]==contract_id,'Contract changed on resume'
+            codec_row=c.execute("SELECT value FROM metadata WHERE key='codec'").fetchone()
+            if (codec_row[0] if codec_row else LEGACY_CODEC)!=self.codec:
+                c.close()
+                raise ValueError('Shard codec changed on resume')
             for key,identity in c.execute('SELECT system_id,identity FROM records'):
                 if key in self.entries:raise ValueError('Duplicate system across shards')
                 self.entries[key]=(p,identity)
@@ -58,6 +112,7 @@ class ShardStore:
         self.db=sqlite3.connect(self.path)
         self.db.executescript('PRAGMA synchronous=FULL; PRAGMA journal_mode=DELETE; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT); CREATE TABLE IF NOT EXISTS records(system_id TEXT PRIMARY KEY,identity TEXT,blob_sha TEXT,raw_sha TEXT,raw_bytes INTEGER,payload BLOB);')
         self.db.execute('INSERT OR IGNORE INTO metadata VALUES (?,?)',('contract_id',self.contract_id));self.db.commit()
+        self.db.execute('INSERT OR IGNORE INTO metadata VALUES (?,?)',('codec',self.codec));self.db.commit()
         self.bytes=self.db.execute('SELECT coalesce(sum(length(payload)),0) FROM records').fetchone()[0]
 
     def get(self,key):
@@ -70,7 +125,7 @@ class ShardStore:
         if key in self.entries:
             if self.entries[key][1]!=identity:raise ValueError('Input/cache identity changed')
             return {'reused':True}
-        blob,bsha,rsha,raw_size=encode(payload)
+        blob,bsha,rsha,raw_size=encode(payload,self.codec)
         if self.db is not None and self.bytes and self.bytes+len(blob)>self.max_bytes:self.seal()
         if self.db is None:self._open()
         self.db.execute('INSERT INTO records VALUES (?,?,?,?,?,?)',(key,identity,bsha,rsha,raw_size,blob));self.db.commit()

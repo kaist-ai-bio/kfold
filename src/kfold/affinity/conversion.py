@@ -12,7 +12,7 @@ import sqlite3
 
 from .compact import pack_crop_union, verify_against_source
 from .preparation import digest
-from .shards import ShardStore, decode
+from .shards import ShardStore, decode, LEGACY_CODEC, validate_codec
 
 
 def file_sha(path):
@@ -62,6 +62,7 @@ def convert_sealed_shard(source, destination, plan, *, check_quota, head_validat
             row['crop_receipt'].get('training_ready') is not True
             for row in plan['records'].values()):
         raise ValueError('Training cache requires finalized scientific crop receipts')
+    codec = validate_codec(plan.get('storage_codec', LEGACY_CODEC))
     contract = digest(plan)
     db = sqlite3.connect(source.as_uri() + '?mode=ro&immutable=1', uri=True)
     try:
@@ -92,7 +93,7 @@ def convert_sealed_shard(source, destination, plan, *, check_quota, head_validat
                     r = json.loads(rpath.read_text())
                     if r['contract_id'] != contract or r['bytes'] != shard.stat().st_size or file_sha(shard) != r['sha256']:
                         raise ValueError('Existing compact shard was modified')
-            store = ShardStore(destination / 'shards', contract)
+            store = ShardStore(destination / 'shards', contract, codec=codec)
             if set(store.entries) - set(identities):
                 raise ValueError('Unexpected records in conversion output')
             views = {}
@@ -130,7 +131,7 @@ def convert_sealed_shard(source, destination, plan, *, check_quota, head_validat
             if sum(r['records'] for r in shards) != len(identities):
                 raise ValueError('Sealed receipt coverage mismatch')
             result = dict(schema='pli_compact_conversion_v1', **identity,
-                purpose=plan['purpose'], training_ready=plan['purpose'] == 'training_cache',
+                purpose=plan['purpose'], storage_codec=codec, training_ready=plan['purpose'] == 'training_cache',
                 records=len(identities), system_ids=identities, views=views, shards=shards,
                 bytes=sum(r['bytes'] for r in shards), source_deleted=False,
                 retained_tensors_verified=True, readback_verified=True, head_loader_verified=True)
