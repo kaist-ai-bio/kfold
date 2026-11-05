@@ -272,6 +272,37 @@ def make_apo_branches(f, cap, train_max_apo=None):
     return branches, valid, assignments
 
 
+def normalize_apo_feature_taps(capture, f, reference):
+    """Keep a masked apo slot when an encoder or the entire pool is absent."""
+    batch, length = f.token.pad_mask.shape
+    if "apo_single" not in capture or capture["apo_single"].shape[1] == 0:
+        capture["apo_single"] = reference.new_zeros(batch, 1, length, 2560)
+        capture["apo_single_mask"] = torch.zeros(
+            batch, 1, length, device=f.device, dtype=torch.bool
+        )
+    if capture["apo_pair"].shape[1] == 0:
+        capture["apo_pair"] = capture["apo_pair"].new_zeros(
+            batch, 1, length, length, capture["apo_pair"].shape[-1]
+        )
+        capture["apo_pair_mask"] = torch.zeros(
+            batch, 1, length, length, device=f.device, dtype=torch.bool
+        )
+    return capture
+
+
+@torch.no_grad()
+def capture_pre_trunk_apo_features(model, f, reference):
+    """Read raw apo evidence without a sequence LM or folding trunk call."""
+    capture = {}
+    get_module = getattr(model, "_get_model_module", lambda module: module)
+    structure_encoder = get_module(model.prot_struct_encoder)
+    if structure_encoder is not None:
+        with model._encoder_on_device(structure_encoder.encoder, f.device):
+            structure_encoder(f, feature_taps=capture)
+    get_module(model.apo_module)(f, feature_taps=capture)
+    return normalize_apo_feature_taps(capture, f, reference)
+
+
 def mix_representations(
     model,
     f,
@@ -282,12 +313,28 @@ def mix_representations(
     max_combinations=None,
     training=False,
     preselected=None,
+    *,
+    use_apo_trunk=True,
+    apo_trunk_recycles=None,
 ):
-    """Keep the baseline RNG stream intact, including at zero initialization."""
+    """Mix branch trunks or retain only pre-trunk confidence/utility evidence.
+
+    Training inherits the main recycle count. Inference supplies its independent
+    branch count. Extra feature/trunk work never advances the generation RNG.
+    """
     config = model.apo_repr_mix_config
     cap = config.max_combinations if max_combinations is None else max_combinations
     if cap < 1:
         raise ValueError("max_combinations must be positive")
+    branch_recycles = num_recycles if apo_trunk_recycles is None else apo_trunk_recycles
+    if branch_recycles < 0:
+        raise ValueError("apo_trunk_recycles must be non-negative")
+    if training and not use_apo_trunk:
+        raise ValueError("Skipping apo branch trunks is inference-only")
+    if not use_apo_trunk and not config.relation_depth:
+        # Legacy mixers have no pre-trunk confidence/utility path to retain.
+        model.last_apo_mix_assignments = None
+        return z.detach(), z.detach(), lm.detach()
     devices = (
         [f.device.index if f.device.index is not None else torch.cuda.current_device()]
         if f.device.type == "cuda"
@@ -308,27 +355,17 @@ def mix_representations(
         for branch in branches:
             # Every branch sees the same dropout stream, independent of branch order.
             with torch.random.fork_rng(devices=devices):
+                if not use_apo_trunk:
+                    taps.append(capture_pre_trunk_apo_features(model, branch, s))
+                    continue
                 if config.relation_depth:
                     capture = {}
                     _, branch_s, branch_z = model.run_trunk(
-                        branch, num_recycles, feature_taps=capture
+                        branch, branch_recycles, feature_taps=capture
                     )
-                    batch, length = branch.token.pad_mask.shape
-                    if "apo_single" not in capture or capture["apo_single"].shape[1] == 0:
-                        capture["apo_single"] = branch_s.new_zeros(batch, 1, length, 2560)
-                        capture["apo_single_mask"] = torch.zeros(
-                            batch, 1, length, device=f.device, dtype=torch.bool
-                        )
-                    if capture["apo_pair"].shape[1] == 0:
-                        capture["apo_pair"] = branch_z.new_zeros(
-                            batch, 1, length, length, 64
-                        )
-                        capture["apo_pair_mask"] = torch.zeros(
-                            batch, 1, length, length, device=f.device, dtype=torch.bool
-                        )
-                    taps.append(capture)
+                    taps.append(normalize_apo_feature_taps(capture, branch, branch_s))
                 else:
-                    _, branch_s, branch_z = model.run_trunk(branch, num_recycles)
+                    _, branch_s, branch_z = model.run_trunk(branch, branch_recycles)
             zs.append(branch_z.detach())
             ss.append(branch_s.detach())
     model.last_apo_mix_assignments = assignments
@@ -357,10 +394,12 @@ def mix_representations(
         context.update(
             valid=valid,
             branches=branches,
-            branch_z=torch.stack(zs, 1),
-            branch_s=torch.stack(ss, 1),
         )
+        if use_apo_trunk:
+            context.update(branch_z=torch.stack(zs, 1), branch_s=torch.stack(ss, 1))
         model.last_apo_mix_context = context
+    if not use_apo_trunk:
+        return z.detach(), z.detach(), lm.detach()
     return model.apo_repr_mix(
         z.detach(), lm.detach(), torch.stack(zs, 1), torch.stack(ss, 1), valid
     )

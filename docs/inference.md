@@ -136,6 +136,9 @@ The default `--stage all` prepares apos and predicts complexes.
 | `--num-shared-apos` | `5` | Maximum apo candidates used per protein entry with shared seeds (1–5). |
 | `--num-samples` | `5` | Complex predictions per query/seed. |
 | `--num-recycles` | `10` | Model recycling iterations. |
+| `--apo-trunk`, `--no-apo-trunk` | On | Run extra apo-combination trunks and post-trunk mixers. Off retains pre-trunk confidence/utility adapters in joint-relation models. |
+| `--apo-trunk-recycles` | `2` | Independent extra apo-trunk recycles; `0` keeps the initial pass. Ignored with `--no-apo-trunk`. |
+| `--max-apo-combinations` | Model config | Maximum unique whole-complex apo branches for representation-mixing models. |
 | `--num-steps` | `100` | Diffusion steps. |
 | `--kernel` | `auto` | Backend for K-Fold and AtlasFold apo preparation: `auto`, `triton`, `cuequiv`, or `torch`; `auto` prefers Triton, then cuEquivariance, then PyTorch. |
 | `--gpu-ids` | `0` | Unique non-negative visible CUDA device IDs. |
@@ -149,6 +152,33 @@ The default `--stage all` prepares apos and predicts complexes.
 | `--save-embeddings` | Off | Save single and pair embeddings. |
 | `--save-distogram` | Off | Compute and save distogram arrays. |
 | `--save-trajectory` | Off | Compute and save diffusion trajectories. |
+
+### Apo branch trunks
+
+For a representation-mixing checkpoint, the base trunk uses `--num-recycles`.
+Additional apo-combination trunks use `--apo-trunk-recycles`, independently:
+
+```bash
+kfold -i query.yaml -o predictions-mix/ --model-path exported-model/ \
+  --num-recycles 10 --apo-trunk --apo-trunk-recycles 2
+```
+
+Use `--no-apo-trunk` for one base trunk evaluation, preserving all provided apo
+contexts and the original prior pool. Joint-relation models still encode the
+pre-trunk apo features used by candidate-conditioned confidence and utility;
+they skip the generation mixer and every extra folding trunk:
+
+```bash
+kfold -i query.yaml -o predictions-base-trunk/ --model-path exported-model/ \
+  --num-recycles 10 --no-apo-trunk
+```
+
+These controls are ignored by checkpoints without representation mixers. Older
+post-trunk-only mixer checkpoints bypass all three mixers in the off mode.
+Training retains its existing recycle policy. To reproduce inference before
+these controls were introduced, explicitly set `--apo-trunk-recycles` equal to
+`--num-recycles`. Use a new output directory or `--overwrite` when changing the
+controls; the requested mode/count are recorded in `kfold_settings.json`.
 
 ### Sampling
 

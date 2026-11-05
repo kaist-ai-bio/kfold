@@ -114,6 +114,27 @@ preselection is never used during training. Runtime savings are not yet measured
 and pre-trunk scoring itself has a cost. Neither utility nor attention weights
 should be presented as a physical posterior.
 
+## Independent inference controls
+
+`use_apo_trunk=True` and `apo_trunk_recycles=2` are inference defaults, exposed as
+`--apo-trunk`/`--no-apo-trunk` and `--apo-trunk-recycles`. The base trunk retains
+the independent `num_recycles`/`--num-recycles` count. Extra trunks retain the
+existing recycle convention: zero means an initial pass without further recycles.
+
+With `use_apo_trunk=False`, the generator receives the original base pair
+representation. Apo branches still provide pre-trunk single/pair/geometry context
+to both independent confidence adapters and the utility head. Only the frozen
+structure encoder and ApoModule run for these contexts; no extra sequence LM or
+folding trunk is run. This applies even to one-apo inputs. With the option on,
+one branch still adds one trunk evaluation; no stochastic-result deduplication is
+performed. Prior inputs, seeds, branch cap and model weights are preserved.
+
+No new parameters or checkpoint conversion are needed. Existing training and
+training-time validation continue to inherit their original main recycle count.
+Old inference behavior is available by explicitly matching `apo_trunk_recycles`
+to `num_recycles`; it is no longer the new inference default. Use distinct output
+directories for changed protocols and record both controls in evaluation manifests.
+
 ## Training settings
 
 Both variants use seed 3, crop 768, at most three apos/three complex branches,

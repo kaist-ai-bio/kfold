@@ -321,6 +321,8 @@ class KFold(torch.nn.Module):
         max_apo_combinations: int | None = None,
         apo_selection_top_k: int | None = None,
         apo_selection_pool_size: int = 32,
+        use_apo_trunk: bool = True,
+        apo_trunk_recycles: int = 2,
     ) -> dict[str, dict[str, torch.Tensor]]:
         """Run KFold structure prediction from a fully prepared input.
 
@@ -334,6 +336,11 @@ class KFold(torch.nn.Module):
             Number of diffusion steps for training.
         num_samples : int
             Number of diffusion samples for training.
+        use_apo_trunk : bool
+            Run extra apo branch trunks and post-trunk mixers (default True).
+            False keeps pre-trunk confidence/utility adapters active.
+        apo_trunk_recycles : int
+            Extra apo-trunk recycle count, independent of num_recycles (default 2).
 
         Returns
         -------
@@ -370,6 +377,8 @@ class KFold(torch.nn.Module):
             max_apo_combinations=max_apo_combinations,
             apo_selection_top_k=apo_selection_top_k,
             apo_selection_pool_size=apo_selection_pool_size,
+            use_apo_trunk=use_apo_trunk,
+            apo_trunk_recycles=apo_trunk_recycles,
         )
 
         # remove batch dimension
@@ -394,6 +403,8 @@ class KFold(torch.nn.Module):
         max_apo_combinations: int | None = None,
         apo_selection_top_k: int | None = None,
         apo_selection_pool_size: int = 32,
+        use_apo_trunk: bool = True,
+        apo_trunk_recycles: int = 2,
     ) -> dict[str, dict[str, torch.Tensor]]:
         """Forward pass of KFold model for model training.
 
@@ -413,6 +424,11 @@ class KFold(torch.nn.Module):
             Whether to return predicted distogram logits.
         return_traj : bool, optional
             Whether to return sampling trajectories.
+        use_apo_trunk : bool
+            Run extra apo trunks and post-trunk mixers. False retains the base
+            generation representation and pre-trunk confidence/utility evidence.
+        apo_trunk_recycles : int
+            Extra apo-trunk recycles (default 2; zero keeps the initial pass).
 
         Returns
         -------
@@ -431,11 +447,16 @@ class KFold(torch.nn.Module):
                 "Batched input with batch_size > 1 is not supported for inference yet."
             )
 
+        if apo_trunk_recycles < 0:
+            raise ValueError("apo_trunk_recycles must be non-negative")
+
         preselected = None
         if apo_selection_top_k is not None:
             from kfold.model.modules.apo_selection import select_scored_combinations
 
-            scored = self.score_apo_combinations(f_input, apo_selection_pool_size)
+            scored = self.score_apo_combinations(
+                f_input, max_combinations=apo_selection_pool_size
+            )
             preselected = select_scored_combinations(scored, apo_selection_top_k)
             self.last_apo_selection_assignments = scored["assignments"]
             dict_out["apo_selection"] = {
@@ -459,6 +480,8 @@ class KFold(torch.nn.Module):
                 num_recycles,
                 max_apo_combinations,
                 preselected=preselected,
+                use_apo_trunk=use_apo_trunk,
+                apo_trunk_recycles=apo_trunk_recycles,
             )
         apo_relation = getattr(self.apo_repr_mix, "confidence_relation", None)
         apo_context = self.last_apo_mix_context if apo_relation is not None else None

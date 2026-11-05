@@ -3,7 +3,10 @@
 import torch
 
 from kfold.data.types.model_input import FoldingInput
-from kfold.model.modules.apo_repr_mix import make_apo_branches
+from kfold.model.modules.apo_repr_mix import (
+    capture_pre_trunk_apo_features,
+    make_apo_branches,
+)
 
 
 def select_scored_combinations(scored: dict, top_k: int) -> dict | None:
@@ -60,32 +63,9 @@ def score_apo_combinations(model, f: FoldingInput, max_combinations: int = 3) ->
             branches, valid, assignments = make_apo_branches(f, max_combinations)
         s_inputs, _ = model.input_embedder(f)
         s_inputs = s_inputs.detach()
-        taps = []
-        get_module = getattr(model, "_get_model_module", lambda module: module)
-        structure_encoder = get_module(model.prot_struct_encoder)
-        apo_module = get_module(model.apo_module)
-        for branch in branches:
-            capture = {}
-            if structure_encoder is not None:
-                with model._encoder_on_device(structure_encoder.encoder, f.device):
-                    structure_encoder(branch, feature_taps=capture)
-            apo_module(branch, feature_taps=capture)
-            b, length = branch.token.pad_mask.shape
-            if "apo_single" not in capture or capture["apo_single"].shape[1] == 0:
-                # Geometry-only apos remain usable by the selector through the
-                # pair validity path; absent structural singles stay unavailable.
-                capture["apo_single"] = s_inputs.new_zeros(b, 1, length, 2560)
-                capture["apo_single_mask"] = torch.zeros(
-                    b, 1, length, device=f.device, dtype=torch.bool
-                )
-            if capture["apo_pair"].shape[1] == 0:
-                capture["apo_pair"] = capture["apo_pair"].new_zeros(
-                    b, 1, length, length, apo_module.channel_apo
-                )
-                capture["apo_pair_mask"] = torch.zeros(
-                    b, 1, length, length, device=f.device, dtype=torch.bool
-                )
-            taps.append(capture)
+        taps = [
+            capture_pre_trunk_apo_features(model, branch, s_inputs) for branch in branches
+        ]
 
         context = {
             name: torch.cat([tap[name] for tap in taps], dim=1).detach()

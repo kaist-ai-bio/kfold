@@ -27,6 +27,21 @@ logger = logging.getLogger("cli")
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     # Stage selection, query paths, and generation seeds.
     parser.add_argument(
+        "--apo-trunk",
+        dest="use_apo_trunk",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run extra apo-combination trunks and post-trunk mixers (default: on). "
+        "--no-apo-trunk retains pre-trunk confidence/utility adapters.",
+    )
+    parser.add_argument(
+        "--apo-trunk-recycles",
+        type=int,
+        default=2,
+        help="Recycles for extra apo trunks, independent of --num-recycles "
+        "(default: 2; 0 keeps the initial pass). Ignored with --no-apo-trunk.",
+    )
+    parser.add_argument(
         "--max-apo-combinations",
         type=int,
         default=None,
@@ -245,6 +260,8 @@ def _load_queries(args: argparse.Namespace) -> list[Query]:
             raise ValueError(f"--{name.replace('_', '-')} must be between 1 and 5.")
     if args.max_apo_combinations is not None and args.max_apo_combinations < 1:
         raise ValueError("--max-apo-combinations must be positive")
+    if args.apo_trunk_recycles < 0:
+        raise ValueError("--apo-trunk-recycles must be non-negative.")
     for name in ("num_samples", "num_recycles", "num_steps"):
         if getattr(args, name) < 1:
             raise ValueError(f"--{name.replace('_', '-')} must be positive.")

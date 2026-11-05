@@ -97,12 +97,18 @@ Sampling defaults match the CLI.
 | `num_apos` | `1` | Generated apos per protein entry (1–5); provided structures are used directly. |
 | `num_samples` | `5` | Predictions per seed. |
 | `num_recycles` | `10` | Number of model recycling iterations. |
+| `use_apo_trunk` | `True` | Run extra apo trunks and post-trunk mixers; `False` retains pre-trunk confidence/utility adapters and the base generation path. |
+| `apo_trunk_recycles` | `2` | Recycles for extra apo trunks, independent of `num_recycles`; non-negative, with `0` retaining the initial pass. |
 | `num_steps` | `100` | Number of diffusion steps. |
 | `return_embeddings` | `False` | Include shared single and pair embeddings in `result.embeddings`. |
 | `return_trajectory` | `False` | Include per-sample diffusion trajectories in `result.trajectory`. |
 | `return_distogram` | `False` | Include shared distance logits and metadata in `result.distogram`. |
 
-Sampling counts must be positive.
+Sampling counts must be positive; extra apo-trunk recycles may be zero.
+The two apo-trunk controls also apply to `predict_from_input()`,
+`KFold.inference()` and `KFold.predict()`. They do not add checkpoint parameters.
+For example, `runner.predict(query, seed=1, use_apo_trunk=False)` uses one base
+trunk while retaining the joint model's explicit apo confidence/utility paths.
 See [apo structures](inference.md#apo-structures) for how provided and generated structures are used.
 
 ### Saving results
