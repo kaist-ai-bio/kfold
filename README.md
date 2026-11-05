@@ -78,7 +78,15 @@ If you use K-Fold in your research, please cite our preprint:
 ```bibtex
 @article{bae2026kfold,
   title   = {Predicting conformational changes induced by biomolecular interactions},
-  author  = {Bae, Yeongnam and others},
+  author  = {Bae, Yeongnam and Baek, Jinheon and Choi, Eugene and Choi, Jeong Hun
+             and Han, Hyeongyu and Jang, Hyosoon and Jeon, Woosung and Jo, Jaehyeong
+             and Kim, Dongki and Kim, Hyeongwoo and Kim, Jun Hyeong and Kim, Jun Hyeong
+             and Kim, Shinwoo and Kim, Taewon and Kim, Youngchan and Lee, Joongwon
+             and Lee, Junyup and Moon, Seokhyun and Park, Minha and Samuel, Calvin
+             and Seo, Hyunjin and Seo, Jisu and Seo, Seonghwan and Shin, Mingyeong
+             and Shin, Yunsu and Zhung, Wonho and Ahn, Sungsoo and Han, Dongsu
+             and Hwang, Sung Ju and Kim, Ho Min and Kim, Woo Youn and Lee, Gyu Rie
+             and Oh, Byung-Ha},
   journal = {bioRxiv},
   year    = {2026},
   doi     = {10.64898/2026.10.26.760299},
