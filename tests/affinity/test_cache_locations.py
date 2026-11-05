@@ -29,6 +29,35 @@ def test_appsdata_first_then_account_for_concurrent_reservation(tmp_path):
     assert reserve(c)==first
 
 
+def test_concurrent_initialization_and_reservation_preserves_capacity(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    gate = Barrier(8)
+    def worker(index):
+        gate.wait()
+        c = catalog(tmp_path)
+        return reserve(c, source=format(index, 'x'))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rows = list(pool.map(worker, range(8)))
+    assert len({row['source_sha'] for row in rows}) == 8
+    assert sum(row['mount'] == '/appsdata' for row in rows) == 1
+    assert sum(row['mount'] == '/scratch' for row in rows) == 7
+
+
+def test_catalog_failure_rolls_back_releases_lock_and_closes_connection(tmp_path):
+    import sqlite3
+    c = catalog(tmp_path)
+    with pytest.raises(RuntimeError, match='injected'):
+        with c._db() as db:
+            db.execute("INSERT INTO metadata VALUES ('injected','value')")
+            raise RuntimeError('injected')
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        db.execute('SELECT 1')
+    with c._db() as fresh:
+        assert fresh.execute("SELECT value FROM metadata WHERE key='injected'").fetchone() is None
+    assert reserve(c)['state'] == 'reserved'
+
+
 def test_future_raw_write_forecast_prevents_unsafe_overflow(tmp_path):
     c=catalog(tmp_path)
     with pytest.raises(RuntimeError,match='Projected quota'):

@@ -5,8 +5,11 @@ may double-count bytes already being written. No reservation is silently freed
 after a failed worker, and no feature or cache file is deleted here.
 """
 import json
+from contextlib import contextmanager
+import fcntl
 from pathlib import Path
 import sqlite3
+import time
 
 from .conversion import file_sha
 
@@ -40,11 +43,33 @@ class CacheLocations:
             if db.execute("SELECT value FROM metadata WHERE key='roots'").fetchone()[0] != settings:
                 raise ValueError('Catalog roots cannot change on resume')
 
+    @contextmanager
     def _db(self):
-        db = sqlite3.connect(self.path, timeout=60)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA synchronous=FULL')
-        return db
+        # Serialize catalog operations before SQLite acquisition. A large writer
+        # cohort otherwise repeatedly competes with long quota/verification
+        # transactions, including during constructor metadata initialization.
+        # All writers must use this protocol; deploy only after older writers exit.
+        with self.path.with_suffix(self.path.suffix+'.lock').open('a') as lock:
+            deadline = time.monotonic()+120
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('Cache catalog lock unavailable; preserve partial outputs')
+                    time.sleep(0.05)
+            db = None
+            try:
+                db = sqlite3.connect(self.path, timeout=60)
+                db.row_factory = sqlite3.Row
+                db.execute('PRAGMA synchronous=FULL')
+                with db:
+                    yield db
+            finally:
+                if db is not None:
+                    db.close()
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
     @staticmethod
     def _sha(value):
