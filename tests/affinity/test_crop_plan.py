@@ -22,9 +22,10 @@ def fixture():
     return source,rows,{str(i):copy.deepcopy(profile) for i in range(10)}
 
 
-def plan(source,rows,profiles,keys=('historical',)):
+def plan(source,rows,profiles,keys=('historical',),retain_unstable=False):
     return stable_record_plan(source,rows,profiles,historical_keys=keys,feature_contract={},
-        candidate_provenance=dict(candidate_manifest_sha256='b'*64,frontier_sha256='c'*64))
+        candidate_provenance=dict(candidate_manifest_sha256='b'*64,frontier_sha256='c'*64),
+        retain_unstable=retain_unstable)
 
 
 def test_exact_training_consensus_attaches_without_using_query_label():
@@ -52,6 +53,15 @@ def test_unstable_consensus_is_not_silently_used_or_discarded():
     for i in range(1,10,2):
         profiles[str(i)]['protein_min_expected_distance']=[5.]*50+[20.]*350
     assert plan(source,rows,profiles)['reason']=='unstable_consensus_policy_review'
+    retained=plan(source,rows,profiles,retain_unstable=True)
+    assert retained['status']=='final'
+    assert 'target_consensus_200' in retained['views']
+    receipt=retained['crop_receipt']
+    assert receipt['strict_stable'] is False
+    assert receipt['consensus_quality']=='unstable'
+    assert receipt['unstable_consensus_policy']=='retain_flagged'
+    assert receipt['training_inclusion_decided'] is False
+    assert receipt['medoid_mean_jaccard'] < .5 or receipt['split_half_jaccard'] < .5
 
 
 @pytest.mark.parametrize('defect',['apo','mapping','seed'])

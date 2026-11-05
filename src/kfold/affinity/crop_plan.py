@@ -1,7 +1,7 @@
 """Bind frozen training evidence to an exact full-input feature record.
 
-Unresolved aliases, missing earlier ranks and unstable consensuses remain
-pending. This planner never substitutes a query pocket for a consensus view.
+Unresolved aliases and missing earlier ranks remain pending. Unstable
+consensuses can be retained with explicit quality flags when requested.
 """
 import hashlib
 
@@ -13,8 +13,8 @@ from .profile_corpus import consensus_from_prefix, validate_profile_input
 
 
 def stable_record_plan(source, candidates, profiles, *, historical_keys,
-                       feature_contract, candidate_provenance):
-    """Build a final three-view plan only for stable, unambiguous targets.
+                       feature_contract, candidate_provenance, retain_unstable=False):
+    """Build an unambiguous three-view storage plan, preserving stability.
 
     The caller supplies the complete historical-key inventory for this exact
     sequence/apo, and verifies the candidate/profile artifact checksums before
@@ -45,7 +45,7 @@ def stable_record_plan(source, candidates, profiles, *, historical_keys,
     if result['status'] != 'ready':
         return dict(status='pending',reason=result.get('reason','consensus_unresolved'),evidence_status=result['status'])
     consensus = result['consensus']
-    if not consensus['strict_stable']:
+    if not consensus['strict_stable'] and not retain_unstable:
         return dict(status='pending',reason='unstable_consensus_policy_review',consensus_sha256=digest(result))
     medoid = profiles[consensus['medoid_system_id']]
     if (medoid['target_input_key'] != descriptor['target_input_key'] or
@@ -67,7 +67,9 @@ def stable_record_plan(source, candidates, profiles, *, historical_keys,
         unavailable['target_consensus_200'] = str(exc)
     if not views:
         return dict(status='unsupported',reason='no_approved_crop_fits',unavailable=unavailable)
-    receipt = dict(selector_version='stable_training_consensus_v1',training_ready=True,
+    receipt = dict(selector_version='quality_flagged_training_consensus_v2',training_ready=True,
+        training_inclusion_decided=False,
+        unstable_consensus_policy='retain_flagged' if retain_unstable else 'pending_review',
         config=dict(query_200=[200,256],target_consensus_200=[200,256],query_350=[350,512]),
         target_input_key=descriptor['target_input_key'],historical_target_key=next(iter(keys)),
         consensus_sha256=digest(result),candidate_provenance=candidate_provenance,
@@ -75,7 +77,9 @@ def stable_record_plan(source, candidates, profiles, *, historical_keys,
         evidence_system_ids=consensus['evidence_system_ids'],
         evidence_candidate_ranks=consensus['evidence_candidate_ranks'],
         medoid_mean_jaccard=consensus['medoid_mean_jaccard'],
-        split_half_jaccard=consensus['split_half_jaccard'],strict_stable=True)
+        split_half_jaccard=consensus['split_half_jaccard'],
+        strict_stable=consensus['strict_stable'],
+        consensus_quality='stable' if consensus['strict_stable'] else 'unstable')
     return dict(status='final',source_cache_identity_sha256=source['cache_identity_sha256'],
         views={name:indices.tolist() for name,indices in views.items()},
         unavailable=unavailable,crop_receipt=receipt)
