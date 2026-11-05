@@ -48,6 +48,21 @@ def test_missing_earlier_rank_and_aliases_stay_pending():
     assert plan(source,rows,profiles)['status']=='pending'
 
 
+def test_exhausted_evidence_retains_queries_with_explicit_unavailable_consensus():
+    source,rows,profiles=fixture()
+    rows=rows[:5]
+    for row in rows:row['target_training_ligands']=5
+    result=plan(source,rows,profiles,retain_unstable=True)
+    assert result['status']=='final'
+    assert set(result['views'])=={'query_200','query_350'}
+    assert result['unavailable']['target_consensus_200']=='fewer_than_ten_valid_profiles'
+    assert result['crop_receipt']['consensus_quality']=='unavailable'
+    assert result['crop_receipt']['strict_stable'] is None
+    # A truncated prefix is not evidence exhaustion.
+    for row in rows:row['target_training_ligands']=10
+    assert plan(source,rows,profiles,retain_unstable=True)['status']=='pending'
+
+
 def test_unstable_consensus_is_not_silently_used_or_discarded():
     source,rows,profiles=fixture()
     for i in range(1,10,2):

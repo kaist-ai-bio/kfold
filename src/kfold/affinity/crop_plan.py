@@ -42,6 +42,24 @@ def stable_record_plan(source, candidates, profiles, *, historical_keys,
            for c in candidates):
         raise ValueError('Training evidence belongs to a different sequence/apo/source target')
     result = consensus_from_prefix(candidates, profiles)
+    if result['status'] == 'unsupported':
+        # Only an exhausted, fully observed prefix can reach this branch.
+        # Keep valid query views without fabricating a consensus pocket.
+        views, unavailable, _ = query_views(source)
+        unavailable['target_consensus_200'] = result['reason']
+        if not views:
+            return dict(status='unsupported',reason='no_approved_crop_fits',unavailable=unavailable)
+        receipt = dict(selector_version='quality_flagged_training_consensus_v2',
+            training_ready=True,training_inclusion_decided=False,
+            config=dict(query_200=[200,256],target_consensus_200=[200,256],query_350=[350,512]),
+            target_input_key=descriptor['target_input_key'],historical_target_key=next(iter(keys)),
+            consensus_sha256=digest(result),candidate_provenance=candidate_provenance,
+            consensus_quality='unavailable',strict_stable=None,
+            consensus_unavailable_reason=result['reason'],
+            exhausted_candidate_count=len(candidates),evidence_rejections=result['rejected'])
+        return dict(status='final',source_cache_identity_sha256=source['cache_identity_sha256'],
+            views={name:indices.tolist() for name,indices in views.items()},
+            unavailable=unavailable,crop_receipt=receipt)
     if result['status'] != 'ready':
         return dict(status='pending',reason=result.get('reason','consensus_unresolved'),evidence_status=result['status'])
     consensus = result['consensus']
