@@ -5,7 +5,7 @@ may double-count bytes already being written. No reservation is silently freed
 after a failed worker, and no feature or cache file is deleted here.
 """
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import fcntl
 from pathlib import Path
 import sqlite3
@@ -89,75 +89,105 @@ class CacheLocations:
             raise ValueError('Positive byte/file bounds required')
         if set(future_writes) != set(self.roots) or any(type(n) is not int or n < 0 for n in future_writes.values()):
             raise ValueError('Explicit nonnegative future-write forecast required per filesystem')
-        with self._db() as db:
-            db.execute('BEGIN IMMEDIATE')
-            existing = db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone()
-            if existing and (existing['plan_sha'] != plan_sha or existing['byte_bound'] != byte_bound or existing['file_bound'] != file_bound):
-                raise ValueError('Source plan or reservation bound changed')
-            if existing and existing['state'] == 'complete':
-                path = Path(existing['manifest_path'])
-                if not path.exists() or file_sha(path) != existing['manifest_sha']:
-                    raise ValueError('Completed location manifest changed')
-                return dict(existing)
-            live = quota_provider()
-            for mount in self.roots:
-                if (mount not in live or type(live[mount].get('free_bytes')) is not int or
-                        type(live[mount].get('free_files')) is not int):
-                    raise ValueError('Live group quota unavailable')
-                if live[mount]['free_bytes'] < RESERVE_BYTES or live[mount]['free_files'] < RESERVE_FILES:
-                    raise RuntimeError('Group quota reserve reached')
-                outstanding = db.execute('SELECT coalesce(sum(byte_bound),0) FROM locations WHERE state=? AND mount=? AND source_sha!=?',
-                    ('reserved',mount,source_sha)).fetchone()[0]
-                if live[mount]['free_bytes']-outstanding-future_writes[mount] < RESERVE_BYTES:
-                    raise RuntimeError('Projected quota insufficient on one filesystem')
-            choices = [existing['mount']] if existing else list(self.roots)
-            for mount in choices:
-                reserved = db.execute('SELECT coalesce(sum(byte_bound),0),coalesce(sum(file_bound),0) FROM locations WHERE state=? AND mount=? AND source_sha!=?', ('reserved',mount,source_sha)).fetchone()
-                available = live[mount]['free_bytes'] - reserved[0] - future_writes[mount]
-                free_files = live[mount]['free_files'] - reserved[1]
-                if available-byte_bound < RESERVE_BYTES or free_files-file_bound < RESERVE_FILES:
-                    continue
-                if not existing:
-                    destination = str(Path(self.roots[mount])/source_sha)
-                    db.execute('INSERT INTO locations VALUES (?,?,?,?,?,?,?,NULL,NULL)',
-                        (source_sha,plan_sha,mount,destination,byte_bound,file_bound,'reserved'))
-                return dict(db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone())
-            raise RuntimeError('Projected quota insufficient; preserve current files and request capacity decision')
+        # A scoped provider acquires the global fresh-quota lock FIRST. A
+        # record-level quota queue must never stall the shared catalog lock.
+        # The fresh query itself still occurs inside the reservation transaction.
+        scope = getattr(quota_provider, 'reservation_scope', None)
+        with (scope() if scope is not None else nullcontext(quota_provider)) as guarded_quota:
+            with self._db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                existing = db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone()
+                if existing and (existing['plan_sha'] != plan_sha or existing['byte_bound'] != byte_bound or existing['file_bound'] != file_bound):
+                    raise ValueError('Source plan or reservation bound changed')
+                if existing and existing['state'] == 'complete':
+                    path = Path(existing['manifest_path'])
+                    if not path.exists() or file_sha(path) != existing['manifest_sha']:
+                        raise ValueError('Completed location manifest changed')
+                    return dict(existing)
+                live = guarded_quota()
+                for mount in self.roots:
+                    if (mount not in live or type(live[mount].get('free_bytes')) is not int or
+                            type(live[mount].get('free_files')) is not int):
+                        raise ValueError('Live group quota unavailable')
+                    if live[mount]['free_bytes'] < RESERVE_BYTES or live[mount]['free_files'] < RESERVE_FILES:
+                        raise RuntimeError('Group quota reserve reached')
+                    outstanding = db.execute('SELECT coalesce(sum(byte_bound),0) FROM locations WHERE state=? AND mount=? AND source_sha!=?',
+                        ('reserved',mount,source_sha)).fetchone()[0]
+                    if live[mount]['free_bytes']-outstanding-future_writes[mount] < RESERVE_BYTES:
+                        raise RuntimeError('Projected quota insufficient on one filesystem')
+                choices = [existing['mount']] if existing else list(self.roots)
+                for mount in choices:
+                    reserved = db.execute('SELECT coalesce(sum(byte_bound),0),coalesce(sum(file_bound),0) FROM locations WHERE state=? AND mount=? AND source_sha!=?', ('reserved',mount,source_sha)).fetchone()
+                    available = live[mount]['free_bytes'] - reserved[0] - future_writes[mount]
+                    free_files = live[mount]['free_files'] - reserved[1]
+                    if available-byte_bound < RESERVE_BYTES or free_files-file_bound < RESERVE_FILES:
+                        continue
+                    if not existing:
+                        destination = str(Path(self.roots[mount])/source_sha)
+                        db.execute('INSERT INTO locations VALUES (?,?,?,?,?,?,?,NULL,NULL)',
+                            (source_sha,plan_sha,mount,destination,byte_bound,file_bound,'reserved'))
+                    return dict(db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone())
+                raise RuntimeError('Projected quota insufficient; preserve current files and request capacity decision')
+
+    @staticmethod
+    def _signature(path):
+        st = path.stat()
+        return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+    def _verify_completion(self, row, source_sha, plan_sha):
+        # Payload hashing may take minutes. Do it without holding the shared
+        # catalog lock, then recheck both the reservation and file identities.
+        root = Path(row['destination'])
+        path = root/'complete.json'
+        signatures = {path: self._signature(path)}
+        manifest_sha = file_sha(path)
+        result = json.loads(path.read_text())
+        if result.get('purpose') != self.purpose or result.get('training_ready') != (self.purpose == 'training_cache'):
+            raise ValueError('Pilot and training cache catalogs must remain separate')
+        if result['source_sha256'] != source_sha or result['plan_sha256'] != plan_sha:
+            raise ValueError('Converter source/plan mismatch')
+        if not all(result.get(k) is True for k in ('retained_tensors_verified','readback_verified','head_loader_verified')):
+            raise ValueError('Incomplete conversion validation')
+        if result['source_deleted'] is not False:
+            raise ValueError('Source preservation required')
+        if result['bytes'] > row['byte_bound'] or len(result['system_ids']) != result['records'] or len(set(result['system_ids'])) != result['records']:
+            raise ValueError('Conversion size or coverage mismatch')
+        paths = set(); count = 0; total_bytes = 0
+        for shard in result['shards']:
+            physical = Path(shard['path']).resolve()
+            if not physical.is_relative_to(root) or physical in paths:
+                raise ValueError('Misplaced or duplicate cache shard')
+            paths.add(physical)
+            signatures[physical] = self._signature(physical)
+            if physical.stat().st_size != shard['bytes'] or file_sha(physical) != shard['sha256'] or shard['contract_id'] != plan_sha:
+                raise ValueError('Compact shard checksum or contract mismatch')
+            count += shard['records']; total_bytes += shard['bytes']
+        if count != result['records'] or total_bytes != result['bytes']:
+            raise ValueError('Shard receipt coverage mismatch')
+        if sum(1 for p in root.rglob('*') if p.is_file()) > row['file_bound']:
+            raise ValueError('Conversion file bound exceeded')
+        if any(self._signature(p) != signature for p, signature in signatures.items()):
+            raise ValueError('Cache files changed during completion verification')
+        return path, manifest_sha, signatures
 
     def finish(self, source_sha, plan_sha):
-        """Link a fully verified converter manifest; never trust an exit code."""
+        """Verify payloads outside the catalog lock; publish with a short transaction."""
         self._sha(source_sha); self._sha(plan_sha)
         with self._db() as db:
-            db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone()
             if row is None or row['plan_sha'] != plan_sha:
                 raise ValueError('Missing matching reservation')
-            root = Path(row['destination'])
-            path = root/'complete.json'
-            result = json.loads(path.read_text())
-            if result.get('purpose') != self.purpose or result.get('training_ready') != (self.purpose == 'training_cache'):
-                raise ValueError('Pilot and training cache catalogs must remain separate')
-            if result['source_sha256'] != source_sha or result['plan_sha256'] != plan_sha:
-                raise ValueError('Converter source/plan mismatch')
-            if not all(result.get(k) is True for k in ('retained_tensors_verified','readback_verified','head_loader_verified')):
-                raise ValueError('Incomplete conversion validation')
-            if result['source_deleted'] is not False:
-                raise ValueError('Source preservation required')
-            if result['bytes'] > row['byte_bound'] or len(result['system_ids']) != result['records'] or len(set(result['system_ids'])) != result['records']:
-                raise ValueError('Conversion size or coverage mismatch')
-            paths = set(); count = 0; total_bytes = 0
-            for shard in result['shards']:
-                physical = Path(shard['path']).resolve()
-                if not physical.is_relative_to(root) or physical in paths:
-                    raise ValueError('Misplaced or duplicate cache shard')
-                paths.add(physical)
-                if physical.stat().st_size != shard['bytes'] or file_sha(physical) != shard['sha256'] or shard['contract_id'] != plan_sha:
-                    raise ValueError('Compact shard checksum or contract mismatch')
-                count += shard['records']; total_bytes += shard['bytes']
-            if count != result['records'] or total_bytes != result['bytes']:
-                raise ValueError('Shard receipt coverage mismatch')
-            if sum(1 for p in root.rglob('*') if p.is_file()) > row['file_bound']:
-                raise ValueError('Conversion file bound exceeded')
+            before = dict(row)
+        path, manifest_sha, signatures = self._verify_completion(before, source_sha, plan_sha)
+        with self._db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone()
+            if row is None or dict(row) != before:
+                raise ValueError('Reservation changed during completion verification')
+            if any(self._signature(p) != signature for p, signature in signatures.items()):
+                raise ValueError('Cache files changed before catalog publication')
+            if file_sha(path) != manifest_sha:
+                raise ValueError('Completion manifest changed before catalog publication')
             db.execute('UPDATE locations SET state=?,manifest_path=?,manifest_sha=? WHERE source_sha=?',
-                ('complete',str(path),file_sha(path),source_sha))
+                ('complete',str(path),manifest_sha,source_sha))
             return dict(db.execute('SELECT * FROM locations WHERE source_sha=?', (source_sha,)).fetchone())

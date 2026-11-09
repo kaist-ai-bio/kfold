@@ -122,7 +122,7 @@ def pack_crop_union(source, views, *, crop_receipt, unavailable=None):
 
 def read_crop(compact, view):
     """Return one sparse head view, without substituting a missing consensus."""
-    if compact.get("schema") != SCHEMA:
+    if compact.get("schema") not in (SCHEMA, "pli_historical_crop_union_bf16_v1"):
         raise ValueError("Unexpected compact schema")
     if view not in compact["view_indices"]:
         raise ValueError(f"Unavailable crop {view}: {compact['unavailable_views'].get(view, 'unknown view')}")

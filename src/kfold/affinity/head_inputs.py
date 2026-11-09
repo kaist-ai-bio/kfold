@@ -7,7 +7,7 @@ from .compact import read_crop
 from .crops import distance_bin_centers
 
 
-def compact_head_inputs(compact, view, *, contact_cutoff=8.0):
+def compact_head_inputs(compact, view, *, contact_cutoff=8.0, historical_key=None):
     """Return FP32 CPU kwargs; the caller controls device/autocast/batching.
 
     This follows the colleague's three-channel distogram convention. PP entries
@@ -16,6 +16,9 @@ def compact_head_inputs(compact, view, *, contact_cutoff=8.0):
     """
     if not math.isfinite(contact_cutoff) or contact_cutoff <= 0:
         raise ValueError("Invalid contact cutoff")
+    if historical_key is not None:
+        from .alias_compact import resolve_historical_view
+        view = resolve_historical_view(compact, historical_key, view)
     crop = read_crop(compact, view)
     n = len(crop['protein_mask'])
     pairs = crop['z_pair_indices'].long()

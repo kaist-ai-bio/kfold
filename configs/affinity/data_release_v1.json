@@ -1,0 +1,29 @@
+{
+  "schema": "pli_feature_cache_release_v1",
+  "observed_date": "2026-11-09",
+  "source_commit": "368a9d6e",
+  "records": 2817891,
+  "parent_records": 2795993,
+  "new_records": 21898,
+  "raw_records": 2818274,
+  "excluded_validation_inputs": 383,
+  "catalog": "/scratch/t530a05/kfold/experiments/biolip3-feature-production-20261109/training-cache-retry1/catalog.sqlite",
+  "parent_catalog_sha256": "c2c6e5334e45449f68ab453337dbd3492bcade4ddcb9d1a9f2d4cac5337bcf17",
+  "new_cache_completion_sha256": "36495b3090e4c2915d3c5ab03bfd187a8b3fe46d57fa4b38971eed243fd4384b",
+  "payload_files": 16731,
+  "payload_bytes": 25922781806592,
+  "raw_new_bytes": 312164618240,
+  "raw_new_shards": 348,
+  "new_labels": {
+    "main": "/scratch/t530a05/kfold/experiments/biolip3-apo-atlasfold-20261109/feature-extension/labels.sqlite",
+    "supplementary": "/scratch/t530a05/kfold/experiments/biolip3-pre-gpu-repair-20261109/release-audit/reused-censored-labels.sqlite",
+    "rows": 23576
+  },
+  "science_context": "/scratch/t530a05/kfold/experiments/biolip3-feature-production-20261109/training-cache-retry1/science-context.json.gz",
+  "science_context_sha256": "3d7e4d328798c02db3416797ea991a6008055c301f6ceaa4d562c21274077b48",
+  "storage": "immutable SQLite shards/bundles, logical catalog; not LMDB",
+  "raw_archive": "r902a13 transfer in progress; source deletion disabled",
+  "apo_sidecache": "withdrawn before production; existing s_lm retained",
+  "supervision_split": "legacy source split is not independent model-selection validation; final head split must be audited separately",
+  "head_training_started": false
+}
