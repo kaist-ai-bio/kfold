@@ -34,6 +34,7 @@ from kfold.utils.config import to_dict
 from kfold.utils.geometry.rigid_align import compute_rmsd
 
 from . import loss as loss_fn
+from .apo_utility import compute_apo_utility_loss
 from .metrics import structure_metrics as validation_metrics
 from .optim.ema import ExponentialMovingAverage
 from .optim.lr_scheduler import AF3LRScheduler
@@ -207,6 +208,8 @@ class KFoldTrainingModule(pl.LightningModule):
         model_config: KFoldConfig = self.global_config.model
         self.model = KFoldForTrain(model_config)
 
+        self.train_apo_repr_mix = self.model.apo_repr_mix is not None
+
         # Compile
         if self.compile_config.enabled:
             self.model.do_compile(
@@ -280,6 +283,25 @@ class KFoldTrainingModule(pl.LightningModule):
 
     def freeze_submodules(self):
         """Freeze submodules based on the training configuration."""
+        if self.train_apo_repr_mix:
+            if (
+                self.train_trunk
+                or self.train_diffusion_head
+                or self.train_confidence_head
+            ):
+                raise ValueError(
+                    "Apo mixing trains only the three mixers; "
+                    "disable existing train flags."
+                )
+            self.model.requires_grad_(False)
+            self.model.apo_repr_mix.requires_grad_(True)
+            # Keep frozen heads in training mode: inference paths use in-place ops
+            # that are not safe when gradients must reach their inputs.
+            self.frozen_modules = (
+                self.model.get_pretrained_module_names()
+                + self.model.get_trunk_module_names()
+            )
+            return
         # FIXME: (SeonghwanSeo) I did not test this function yet.
         # This is required when only selected model components are trained.
 
@@ -456,6 +478,8 @@ class KFoldTrainingModule(pl.LightningModule):
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Compute losses of given the model output."""
         f_input, struct_info = batch
+        utility_loss = None
+        utility_metrics = {}
 
         # NOTE: Compute the losses in float32 for better numerical stability
         # Compute losses
@@ -475,7 +499,7 @@ class KFoldTrainingModule(pl.LightningModule):
             distogram_loss = 0.0
             patch_geometry_loss, patch_geometry_metrics = 0.0, {}
 
-        if self.train_diffusion_head:
+        if self.train_diffusion_head or self.train_apo_repr_mix:
             diffusion_out = model_output["diffusion"]
             diffusion_loss, diffusion_metrics = self.compute_diffusion_loss(
                 x_pred=diffusion_out["x_0_hat"],
@@ -493,7 +517,7 @@ class KFoldTrainingModule(pl.LightningModule):
         else:
             diffusion_loss, diffusion_metrics = 0.0, {}
 
-        if self.train_confidence_head:
+        if self.train_confidence_head or self.train_apo_repr_mix:
             x_pred = model_output["sample"]["coordinates"]
             confidence_loss_mask = torch.tensor(
                 [info["train_confidence_head"] for info in struct_info],
@@ -516,6 +540,15 @@ class KFoldTrainingModule(pl.LightningModule):
             # Log the rmsd between mini-rollout sample and GT.
             rmsd = compute_rmsd(x_pred, x_gt, mask_gt, align=True)  # [B, Nsample]
             sample_metrics = {"mini_rollout_rmsd": rmsd.mean()}
+            if "apo_utility" in model_output:
+                utility_loss, utility_metrics = compute_apo_utility_loss(
+                    model_output["apo_utility"],
+                    f_input,
+                    x_pred,
+                    x_gt,
+                    mask_gt,
+                    confidence_loss_mask,
+                )
 
         else:
             confidence_loss, confidence_metrics = 0.0, {}
@@ -530,6 +563,10 @@ class KFoldTrainingModule(pl.LightningModule):
             + loss_weights["confidence"] * confidence_loss
             + loss_weights["patch_geometry"] * patch_geometry_loss
         )  # [B,]
+        if utility_loss is not None:
+            loss = (
+                loss + self.model.apo_repr_mix_config.utility_loss_weight * utility_loss
+            )
         assert torch.is_tensor(loss), "Loss must be a torch.Tensor."
 
         # Log loss and metrics
@@ -538,6 +575,7 @@ class KFoldTrainingModule(pl.LightningModule):
             | diffusion_metrics
             | confidence_metrics
             | sample_metrics
+            | utility_metrics
         )
         all_metrics["loss"] = loss.detach()
 
@@ -645,7 +683,7 @@ class KFoldTrainingModule(pl.LightningModule):
 
             # Select the best sample based on global PDE score.
             top1_index = None  # Use oracle sample.
-            if self.train_confidence_head:
+            if self.train_confidence_head or self.train_apo_repr_mix:
                 pde = confidence_metrics.compute_pde(
                     confidence_out["pde_logits"],
                     confidence_out["pde_bin_centers"],
@@ -925,7 +963,7 @@ class KFoldTrainingModule(pl.LightningModule):
                 prog_bar=False,
             )
 
-        if self.train_diffusion_head:
+        if self.train_diffusion_head or self.train_apo_repr_mix:
             self.log(
                 "monitor/grad_norm_score_model",
                 gradient_norm(model.score_model),
@@ -939,7 +977,7 @@ class KFoldTrainingModule(pl.LightningModule):
                 prog_bar=False,
             )
 
-        if self.train_confidence_head:
+        if self.train_confidence_head or self.train_apo_repr_mix:
             self.log(
                 "monitor/grad_norm_confidence_head",
                 gradient_norm(model.confidence_head),

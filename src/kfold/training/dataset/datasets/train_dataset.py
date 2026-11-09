@@ -473,11 +473,8 @@ class TrainingDataset(BaseLMDBDataset):
                         or cache_key in missing_token_records
                     ):
                         continue
-                    token_lmdb_path = (
-                        self.data_root
-                        / "apo_tok_lmdb"
-                        / "protein-multimer"
-                        / f"{source}.lmdb"
+                    token_lmdb_path = self._source_lmdb_path(
+                        "apo_tok_lmdb", "protein-multimer", source
                     )
                     if not token_lmdb_path.exists():
                         self.logger.warning(

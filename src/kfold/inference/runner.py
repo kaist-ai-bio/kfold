@@ -392,6 +392,8 @@ class KFoldRunner:
         num_samples: int = 5,
         num_recycles: int = 10,
         num_steps: int = 100,
+        max_apo_combinations: int | None = None,
+        apo_trunk_recycles: int = 2,
         return_embeddings: bool = False,
         return_trajectory: bool = False,
         return_distogram: bool = False,
@@ -415,6 +417,9 @@ class KFoldRunner:
             Number of model recycling iterations.
         num_steps : int
             Number of diffusion sampling steps.
+        apo_trunk_recycles : int
+            Independent recycle count for extra apo trunks (default 2). Zero
+            retains their initial pass.
         return_embeddings : bool
             Include shared single and pair embeddings.
         return_trajectory : bool
@@ -440,6 +445,8 @@ class KFoldRunner:
 
         if num_apos > 5:
             raise ValueError("num_apos must be between 1 and 5.")
+        if apo_trunk_recycles < 0:
+            raise ValueError("apo_trunk_recycles must be non-negative.")
 
         prediction_start = perf_counter()
         query = copy.deepcopy(query)
@@ -482,6 +489,8 @@ class KFoldRunner:
             num_samples=num_samples,
             num_recycles=num_recycles,
             num_steps=num_steps,
+            max_apo_combinations=max_apo_combinations,
+            apo_trunk_recycles=apo_trunk_recycles,
             return_embeddings=return_embeddings,
             return_trajectory=return_trajectory,
             return_distogram=return_distogram,
@@ -504,6 +513,8 @@ class KFoldRunner:
         num_samples: int = 5,
         num_recycles: int = 10,
         num_steps: int = 100,
+        max_apo_combinations: int | None = None,
+        apo_trunk_recycles: int = 2,
         return_embeddings: bool = False,
         return_distogram: bool = False,
         return_trajectory: bool = False,
@@ -524,6 +535,8 @@ class KFoldRunner:
             Number of model recycling iterations.
         num_steps : int
             Number of diffusion sampling steps.
+        apo_trunk_recycles : int
+            Extra apo-trunk recycles (default 2; zero keeps the initial pass).
         return_embeddings : bool
             Include shared single and pair embeddings.
         return_distogram : bool
@@ -553,6 +566,8 @@ class KFoldRunner:
             raise ValueError(f"Num_recycles must be positive: {num_recycles}.")
         if num_steps <= 0:
             raise ValueError(f"Num_steps must be positive: {num_steps}.")
+        if apo_trunk_recycles < 0:
+            raise ValueError("apo_trunk_recycles must be non-negative.")
         if f_input.is_batched:
             raise ValueError("predict_from_input expects an unbatched FoldingInput.")
 
@@ -574,6 +589,8 @@ class KFoldRunner:
                 num_recycles=num_recycles,
                 num_steps=num_steps,
                 num_samples=num_samples,
+                max_apo_combinations=max_apo_combinations,
+                apo_trunk_recycles=apo_trunk_recycles,
                 return_embeddings=return_embeddings,
                 return_distogram=return_distogram,
                 return_traj=return_trajectory,
@@ -627,6 +644,11 @@ class KFoldRunner:
                 "seed": seed,
                 "num_samples": num_samples,
                 "num_recycles": num_recycles,
+                "max_apo_combinations": max_apo_combinations,
+                "apo_trunk_recycles": apo_trunk_recycles,
+                "apo_mix_assignments": getattr(
+                    self.model, "last_apo_mix_assignments", None
+                ),
                 "num_steps": num_steps,
                 "use_struct_encoder": self.model.prot_struct_encoder is not None,
                 "use_rna_encoder": self.model.rna_seq_encoder is not None,

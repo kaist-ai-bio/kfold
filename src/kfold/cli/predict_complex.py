@@ -151,6 +151,9 @@ def run(args: argparse.Namespace, queries: list[Query]) -> None:
             "seeds": args.seeds,
             "num_samples": args.num_samples,
             "num_recycles": args.num_recycles,
+            "max_apo_combinations": args.max_apo_combinations,
+            "apo_trunk_recycles": args.apo_trunk_recycles,
+            "model_path": args.model_path,
             "num_steps": args.num_steps,
             "use_struct_encoder": not args.disable_struct_encoder,
             "use_rna_encoder": not args.disable_rna_encoder,
@@ -262,6 +265,7 @@ def _worker(
         logger.info("Loading K-Fold model and runner.")
         init_start = perf_counter()
         model = KFold.from_pretrained(
+            args.model_path,
             device=torch.device("cuda", gpu_id),
             cache_dir=args.cache_dir,
             use_struct_encoder=not args.disable_struct_encoder,
@@ -313,6 +317,8 @@ def _worker(
                 seed=seed,
                 num_samples=args.num_samples,
                 num_recycles=args.num_recycles,
+                max_apo_combinations=args.max_apo_combinations,
+                apo_trunk_recycles=args.apo_trunk_recycles,
                 num_steps=args.num_steps,
                 return_trajectory=args.save_trajectory,
                 return_embeddings=args.save_embeddings,

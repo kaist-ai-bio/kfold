@@ -270,6 +270,29 @@ class BaseLMDBDataset(torch.utils.data.Dataset):
             self._lmdb_env = _open_lmdb(self.data_root / "structure.lmdb")
         return self._lmdb_env
 
+    def _source_lmdb_path(self, root_name: str, chain_type: str, source: str) -> Path:
+        """Prefer current stores, with exact aliases for archived multimers."""
+        path = self.data_root / root_name / chain_type / f"{source}.lmdb"
+        if not path.exists() and chain_type == "protein-multimer":
+            legacy_roots = {
+                "apo_lmdb": ("apo_multimer_lmdb", "protein"),
+                "apo_tok_lmdb": ("apo_tok_lmdb", "protein_multimer"),
+            }
+            if root_name in legacy_roots:
+                root, kind = legacy_roots[root_name]
+                legacy = self.data_root / root / kind / f"{source}.lmdb"
+                if legacy.exists():
+                    return legacy
+        return path
+
+    def _flat_prior_lmdb_path(self, kind: str) -> Path:
+        path = self.data_root / "prior_lmdb" / f"{kind}.lmdb"
+        if not path.exists() and kind == "protein-multimer":
+            legacy = self.data_root / "prior_multimer_lmdb" / "protein.lmdb"
+            if legacy.exists():
+                return legacy
+        return path
+
     def _get_source_lmdb_env(
         self,
         cache_name: str,
@@ -286,7 +309,7 @@ class BaseLMDBDataset(torch.utils.data.Dataset):
             # Workers open LMDB handles lazily after fork; do not share handles
             # from the parent dataset construction path.
             cache[cache_key] = _open_lmdb(
-                self.data_root / root_name / chain_type / f"{source}.lmdb"
+                self._source_lmdb_path(root_name, chain_type, source)
             )
         return cache[cache_key]
 
@@ -313,10 +336,23 @@ class BaseLMDBDataset(torch.utils.data.Dataset):
                 path.stem
                 for path in sorted((self.data_root / "prior_lmdb" / kind).glob("*.lmdb"))
             ]
+            # The shipped training archive stores one stacked LMDB per kind.
+            # Prefer source-split stores when present; never count both layouts.
+            legacy = self._flat_prior_lmdb_path(kind)
+            if not self._prior_sources[kind] and legacy.exists():
+                self._prior_sources[kind] = [None]
         for source in self._prior_sources[kind]:
-            env = self._get_source_lmdb_env(
-                "_prior_stack_lmdb_envs", "prior_lmdb", kind, source
-            )
+            if source is None:
+                if not hasattr(self, "_prior_stack_lmdb_envs"):
+                    self._prior_stack_lmdb_envs = {}
+                cache = self._prior_stack_lmdb_envs
+                if (kind, None) not in cache:
+                    cache[(kind, None)] = _open_lmdb(self._flat_prior_lmdb_path(kind))
+                env = cache[(kind, None)]
+            else:
+                env = self._get_source_lmdb_env(
+                    "_prior_stack_lmdb_envs", "prior_lmdb", kind, source
+                )
             with env.begin(write=False) as txn:
                 value = txn.get(key.encode("utf-8"))
             if value is not None:
