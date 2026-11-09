@@ -1,0 +1,73 @@
+{
+  "status": "training_template_not_launched",
+  "seed": 20261109,
+  "data": {
+    "manifest": "/scratch/t530a05/kfold/experiments/pli-head-training-20261110-retry3/data/labels.sqlite",
+    "catalog": "/scratch/t530a05/kfold/experiments/biolip3-feature-production-20261109/training-cache-retry1/catalog.sqlite",
+    "view": "query_200",
+    "availability_sha256": "394df06a90d808625eee80b532ea0aec4a83a7abfbcc045f5a094f5463220f43"
+  },
+  "model": {
+    "channel_s": 384,
+    "channel_z": 256,
+    "blocks": 6,
+    "heads": 16,
+    "dropout": 0.1,
+    "outer_rank": 16,
+    "kernel_backend": "torch"
+  },
+  "optimizer": {
+    "lr": 0.0001,
+    "weight_decay": 0.001
+  },
+  "sampling": {
+    "regression": {
+      "groups": 3,
+      "group_size": 5,
+      "singleton_slots": 1,
+      "batch_size": 16
+    },
+    "classification": {
+      "batch_size": 16
+    }
+  },
+  "gradient_clip": 10.0,
+  "max_steps": 10000,
+  "checkpoint_every": 500,
+  "validate_every": 1000,
+  "validation_batch_size": 4,
+  "regression": {
+    "absolute_weight": 0.1,
+    "difference_weight": 0.9,
+    "huber_delta": 0.5,
+    "censored_point_targets": false
+  },
+  "classification": {
+    "threshold_pActivity": 6.0,
+    "measured_positive_fraction": 0.5,
+    "measured_negative_fraction": 0.25,
+    "synthetic_negative_fraction": 0.25
+  },
+  "ablation_variants": [
+    "colleague_cross",
+    "full_pair_control",
+    "slm_outer"
+  ],
+  "limitations": [
+    "s_lm mixes sequence and apo; outer ablation is not pure-apo causal isolation",
+    "Frozen consensus excluded from model-selection training until split-specific replan",
+    "Single-GPU entrypoint; multi-node DDP not validated",
+    "Batch16 tested for one update per condition; throughput and convergence not benchmarked"
+  ],
+  "reference_batch64_not_launched": {
+    "regression": {
+      "groups": 12,
+      "group_size": 5,
+      "singleton_slots": 4,
+      "batch_size": 64
+    },
+    "classification": {
+      "batch_size": 64
+    }
+  }
+}

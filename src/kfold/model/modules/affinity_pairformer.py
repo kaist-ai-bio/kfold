@@ -26,7 +26,8 @@ class AffinityPairformer(torch.nn.Module):
         blocks_per_ckpt: int | None = None
         cross_pair_only: bool = True
 
-    def __init__(self, config: Config, *, use_kernels: bool = False) -> None:
+    def __init__(self, config: Config, *, use_kernels: bool = False,
+                 kernel_backend: str | None = None) -> None:
         super().__init__()
         self.config = config
         self.use_kernels = use_kernels
@@ -47,7 +48,7 @@ class AffinityPairformer(torch.nn.Module):
             num_blocks=config.num_blocks,
             dropout=config.dropout,
             blocks_per_ckpt=config.blocks_per_ckpt,
-            kernel_backend="cuequiv" if use_kernels else "torch",
+            kernel_backend=kernel_backend or ("cuequiv" if use_kernels else "torch"),
         )
         self.single_to_pair = LinearNoBias(config.channel_s, config.channel_z)
         self.readout = torch.nn.Sequential(
@@ -69,6 +70,7 @@ class AffinityPairformer(torch.nn.Module):
         token_mask: torch.Tensor,
         protein_mask: torch.Tensor,
         ligand_mask: torch.Tensor,
+        pair_residual: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Return one scalar prediction for each cropped PL complex."""
         if z.ndim != 4:
@@ -95,6 +97,10 @@ class AffinityPairformer(torch.nn.Module):
             + self.s_to_z_right(s_inputs.to(dtype))[:, None, :, :]
             + self.distogram_to_z(distogram_features.to(dtype))
         )
+        if pair_residual is not None:
+            if pair_residual.shape != z.shape:
+                raise ValueError("Pair residual must match the complete pair layout")
+            z = z + pair_residual.to(z.dtype)
         protein_ligand = (protein_mask[:, :, None] & ligand_mask[:, None, :]) | (
             ligand_mask[:, :, None] & protein_mask[:, None, :]
         )

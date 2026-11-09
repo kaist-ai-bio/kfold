@@ -1,0 +1,882 @@
+{
+  "passed": true,
+  "pilot_job": 1246503,
+  "slurm": "1246503|COMPLETED|0:0|00:01:53|billing=288,cpu=288,energy=78239,gres/gpu=4,mem=780000M,node=1\n",
+  "conditions": [
+    {
+      "passed": true,
+      "task": "regression",
+      "variant": "colleague_cross",
+      "updates": 8,
+      "batch_size": 4,
+      "blocks": 6,
+      "view": "query_200",
+      "initial_common_parameter_sha256": "5f1c3adc5d78ad9b0d1b0d538de5069e1b01cb2cea0135fe0f53aba82dc57020",
+      "all_gradients_finite": true,
+      "optimizer_changed_parameters": true,
+      "resume_matches_uninterrupted": true,
+      "resume_max_parameter_difference": 0.0,
+      "seconds": 15.558995723724365,
+      "peak_reserved_bytes": 11343495168,
+      "parameters": 25107968,
+      "source_compatibility": {
+        "biolip3": [
+          {
+            "row_id": 2183293,
+            "input_id": "0007a829bda3f46d298aeacf75f86b5cc482b402a891373d5e12acf37ba0e2be",
+            "split": "train",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2183295,
+            "input_id": "000fbb54add9a4ef13d9cb188e45d99d899a0b751761eb0b47002fe79ad09107",
+            "split": "validation",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "supplementary": [],
+        "censored": [],
+        "synthetic_evidence": []
+      },
+      "receipt_sha256": "5ad1bc167bc16985c7375323a871c181c41a1e0bebcd6d5db8e1c9df80c70957"
+    },
+    {
+      "passed": true,
+      "task": "regression",
+      "variant": "full_pair_control",
+      "updates": 8,
+      "batch_size": 4,
+      "blocks": 6,
+      "view": "query_200",
+      "initial_common_parameter_sha256": "5f1c3adc5d78ad9b0d1b0d538de5069e1b01cb2cea0135fe0f53aba82dc57020",
+      "all_gradients_finite": true,
+      "optimizer_changed_parameters": true,
+      "resume_matches_uninterrupted": true,
+      "resume_max_parameter_difference": 0.0,
+      "seconds": 15.588131427764893,
+      "peak_reserved_bytes": 11720982528,
+      "parameters": 25186560,
+      "source_compatibility": {
+        "biolip3": [
+          {
+            "row_id": 2183293,
+            "input_id": "0007a829bda3f46d298aeacf75f86b5cc482b402a891373d5e12acf37ba0e2be",
+            "split": "train",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2183295,
+            "input_id": "000fbb54add9a4ef13d9cb188e45d99d899a0b751761eb0b47002fe79ad09107",
+            "split": "validation",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "supplementary": [],
+        "censored": [],
+        "synthetic_evidence": []
+      },
+      "receipt_sha256": "4301e87e860b883162d1fea42a241f51b44aac04d4db8cae40d9d9ce4fd0fef6"
+    },
+    {
+      "passed": true,
+      "task": "regression",
+      "variant": "slm_outer",
+      "updates": 8,
+      "batch_size": 4,
+      "blocks": 6,
+      "view": "query_200",
+      "initial_common_parameter_sha256": "5f1c3adc5d78ad9b0d1b0d538de5069e1b01cb2cea0135fe0f53aba82dc57020",
+      "all_gradients_finite": true,
+      "optimizer_changed_parameters": true,
+      "resume_matches_uninterrupted": true,
+      "resume_max_parameter_difference": 0.0,
+      "seconds": 15.567872047424316,
+      "peak_reserved_bytes": 11718885376,
+      "parameters": 25186560,
+      "source_compatibility": {
+        "biolip3": [
+          {
+            "row_id": 2183293,
+            "input_id": "0007a829bda3f46d298aeacf75f86b5cc482b402a891373d5e12acf37ba0e2be",
+            "split": "train",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2183295,
+            "input_id": "000fbb54add9a4ef13d9cb188e45d99d899a0b751761eb0b47002fe79ad09107",
+            "split": "validation",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "supplementary": [],
+        "censored": [],
+        "synthetic_evidence": []
+      },
+      "receipt_sha256": "93ac5a49316d2f90f775e9398db2526598115a627e0131026b9c71175868db7e"
+    },
+    {
+      "passed": true,
+      "task": "classification",
+      "variant": "colleague_cross",
+      "updates": 8,
+      "batch_size": 4,
+      "blocks": 6,
+      "view": "query_200",
+      "initial_common_parameter_sha256": "5f1c3adc5d78ad9b0d1b0d538de5069e1b01cb2cea0135fe0f53aba82dc57020",
+      "all_gradients_finite": true,
+      "optimizer_changed_parameters": true,
+      "resume_matches_uninterrupted": true,
+      "resume_max_parameter_difference": 0.0,
+      "seconds": 18.078978538513184,
+      "peak_reserved_bytes": 16682844160,
+      "parameters": 25107968,
+      "source_compatibility": {
+        "biolip3": [
+          {
+            "row_id": 2183292,
+            "input_id": "0004d3d29102dd6ed59685d419e45c96754268234dde5533272cdb92e31b608e",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2183293,
+            "input_id": "0007a829bda3f46d298aeacf75f86b5cc482b402a891373d5e12acf37ba0e2be",
+            "split": "train",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "supplementary": [
+          {
+            "row_id": 2206864,
+            "input_id": "527ac0ea65ace79198619afd17bb4c5dee5b00311d855e7cffe5f2569bf016d7",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2206865,
+            "input_id": "14cffe8c2fdb413bf5b3d8323f3de92fee24385d5b4609f0b7a32f80c49888db",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "censored": [
+          {
+            "row_id": 2262403,
+            "input_id": "f3cdb8974f8746aacd04e0c1a067d4c52e736d63add66783ed97e32edf9b40b6",
+            "split": "external_novel",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2262404,
+            "input_id": "1139b74f0e3e36eaa17734524fa202d7da612b13a9f939bcd04883738b527af1",
+            "split": "external_novel",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "synthetic_evidence": [
+          {
+            "row_id": 2357995,
+            "input_id": "8c4f2a1cfed8817106b48e09c44e10662bd32c286f54ae10920fed243efaa648",
+            "split": "train",
+            "relation": "=",
+            "synthetic": true,
+            "finite": true
+          },
+          {
+            "row_id": 2357996,
+            "input_id": "f94882e4f47788d63a33a7a7b48d78deaf00a018632323e9cdefb23cb8e5e36f",
+            "split": "train",
+            "relation": "=",
+            "synthetic": true,
+            "finite": true
+          }
+        ]
+      },
+      "receipt_sha256": "ddd8691cddb980b740e06f410a5af638f98c7b9a5dbe1c5a563c1f31704a7b14"
+    },
+    {
+      "passed": true,
+      "task": "classification",
+      "variant": "full_pair_control",
+      "updates": 8,
+      "batch_size": 4,
+      "blocks": 6,
+      "view": "query_200",
+      "initial_common_parameter_sha256": "5f1c3adc5d78ad9b0d1b0d538de5069e1b01cb2cea0135fe0f53aba82dc57020",
+      "all_gradients_finite": true,
+      "optimizer_changed_parameters": true,
+      "resume_matches_uninterrupted": true,
+      "resume_max_parameter_difference": 0.0,
+      "seconds": 12.415956974029541,
+      "peak_reserved_bytes": 16871587840,
+      "parameters": 25186560,
+      "source_compatibility": {
+        "biolip3": [
+          {
+            "row_id": 2183292,
+            "input_id": "0004d3d29102dd6ed59685d419e45c96754268234dde5533272cdb92e31b608e",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2183293,
+            "input_id": "0007a829bda3f46d298aeacf75f86b5cc482b402a891373d5e12acf37ba0e2be",
+            "split": "train",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "supplementary": [
+          {
+            "row_id": 2206864,
+            "input_id": "527ac0ea65ace79198619afd17bb4c5dee5b00311d855e7cffe5f2569bf016d7",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2206865,
+            "input_id": "14cffe8c2fdb413bf5b3d8323f3de92fee24385d5b4609f0b7a32f80c49888db",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "censored": [
+          {
+            "row_id": 2262403,
+            "input_id": "f3cdb8974f8746aacd04e0c1a067d4c52e736d63add66783ed97e32edf9b40b6",
+            "split": "external_novel",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2262404,
+            "input_id": "1139b74f0e3e36eaa17734524fa202d7da612b13a9f939bcd04883738b527af1",
+            "split": "external_novel",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "synthetic_evidence": [
+          {
+            "row_id": 2357995,
+            "input_id": "8c4f2a1cfed8817106b48e09c44e10662bd32c286f54ae10920fed243efaa648",
+            "split": "train",
+            "relation": "=",
+            "synthetic": true,
+            "finite": true
+          },
+          {
+            "row_id": 2357996,
+            "input_id": "f94882e4f47788d63a33a7a7b48d78deaf00a018632323e9cdefb23cb8e5e36f",
+            "split": "train",
+            "relation": "=",
+            "synthetic": true,
+            "finite": true
+          }
+        ]
+      },
+      "receipt_sha256": "00f5dd92d9efcd1cb3f2eb3b0018b34d6798068257c7351b4c9be2c7ed1041be"
+    },
+    {
+      "passed": true,
+      "task": "classification",
+      "variant": "slm_outer",
+      "updates": 8,
+      "batch_size": 4,
+      "blocks": 6,
+      "view": "query_200",
+      "initial_common_parameter_sha256": "5f1c3adc5d78ad9b0d1b0d538de5069e1b01cb2cea0135fe0f53aba82dc57020",
+      "all_gradients_finite": true,
+      "optimizer_changed_parameters": true,
+      "resume_matches_uninterrupted": true,
+      "resume_max_parameter_difference": 0.0,
+      "seconds": 12.163095712661743,
+      "peak_reserved_bytes": 16871587840,
+      "parameters": 25186560,
+      "source_compatibility": {
+        "biolip3": [
+          {
+            "row_id": 2183292,
+            "input_id": "0004d3d29102dd6ed59685d419e45c96754268234dde5533272cdb92e31b608e",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2183293,
+            "input_id": "0007a829bda3f46d298aeacf75f86b5cc482b402a891373d5e12acf37ba0e2be",
+            "split": "train",
+            "relation": "=",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "supplementary": [
+          {
+            "row_id": 2206864,
+            "input_id": "527ac0ea65ace79198619afd17bb4c5dee5b00311d855e7cffe5f2569bf016d7",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2206865,
+            "input_id": "14cffe8c2fdb413bf5b3d8323f3de92fee24385d5b4609f0b7a32f80c49888db",
+            "split": "train",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "censored": [
+          {
+            "row_id": 2262403,
+            "input_id": "f3cdb8974f8746aacd04e0c1a067d4c52e736d63add66783ed97e32edf9b40b6",
+            "split": "external_novel",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          },
+          {
+            "row_id": 2262404,
+            "input_id": "1139b74f0e3e36eaa17734524fa202d7da612b13a9f939bcd04883738b527af1",
+            "split": "external_novel",
+            "relation": ">",
+            "synthetic": false,
+            "finite": true
+          }
+        ],
+        "synthetic_evidence": [
+          {
+            "row_id": 2357995,
+            "input_id": "8c4f2a1cfed8817106b48e09c44e10662bd32c286f54ae10920fed243efaa648",
+            "split": "train",
+            "relation": "=",
+            "synthetic": true,
+            "finite": true
+          },
+          {
+            "row_id": 2357996,
+            "input_id": "f94882e4f47788d63a33a7a7b48d78deaf00a018632323e9cdefb23cb8e5e36f",
+            "split": "train",
+            "relation": "=",
+            "synthetic": true,
+            "finite": true
+          }
+        ]
+      },
+      "receipt_sha256": "601c46bc595d27176be81ca7408ccfb408899691277367ecef353ee35eb0ba80"
+    }
+  ],
+  "manifest": {
+    "passed": true,
+    "epoch": 1794238685.2274501,
+    "rows": 3695259,
+    "manifest": "/scratch/t530a05/kfold/experiments/pli-head-training-20261110-retry2/data/labels.sqlite",
+    "manifest_sha256": "941ead4938f1c418a788fe06aefade6e7732a36a2c0f62cc2d8607f4de6d1a8a",
+    "chemical_train_val_overlap": 0,
+    "input_train_val_overlap": 0,
+    "chemical_external_novel_overlap": 0,
+    "validation_source_rows_preserved": 151128,
+    "dispositions": [
+      [
+        "approved_validation383_exclusion_or_no_cache",
+        442
+      ]
+    ],
+    "source_labels_modified": false,
+    "raw_feature_access": false,
+    "primary_training_view": "query_200",
+    "consensus_model_selection_blocked_until_train_only_replan": true,
+    "split": "global normalized chemistry hash90/10, seed20261109",
+    "seconds": 426.68223214149475
+  },
+  "preparation": {
+    "passed": true,
+    "epoch": 1794239146.1524942,
+    "manifest_sha256": "941ead4938f1c418a788fe06aefade6e7732a36a2c0f62cc2d8607f4de6d1a8a",
+    "availability_sha256": "394df06a90d808625eee80b532ea0aec4a83a7abfbcc045f5a094f5463220f43",
+    "counts": {
+      "classification": {
+        "external_novel": {
+          "source_eligible": 118618,
+          "query_200": 118618,
+          "query_350": 118618
+        },
+        "external_overlap_aux": {
+          "source_eligible": 5,
+          "query_200": 5,
+          "query_350": 5
+        },
+        "kinase_aux": {
+          "source_eligible": 26832,
+          "query_200": 26832,
+          "query_350": 26832
+        },
+        "train": {
+          "source_eligible": 3192055,
+          "query_200": 3191859,
+          "query_350": 3192055
+        },
+        "validation": {
+          "source_eligible": 351442,
+          "query_200": 351414,
+          "query_350": 351442
+        }
+      },
+      "regression": {
+        "external_novel": {
+          "source_eligible": 55531,
+          "query_200": 55531,
+          "query_350": 55531
+        },
+        "external_overlap_aux": {
+          "source_eligible": 5,
+          "query_200": 5,
+          "query_350": 5
+        },
+        "train": {
+          "source_eligible": 1977932,
+          "query_200": 1977805,
+          "query_350": 1977932
+        },
+        "validation": {
+          "source_eligible": 216045,
+          "query_200": 216032,
+          "query_350": 216045
+        }
+      }
+    },
+    "unavailable": {
+      "query_200": 209,
+      "query_350": 0
+    },
+    "source_labels_hash_verified": true,
+    "source_changed": false,
+    "raw_read": false
+  },
+  "source_reference": {
+    "head": "86c10b5c389fbcae8c3f22d24802e764223cd120",
+    "loss": "7cd98dd728a95efe6560f0a59a741c7c66bd4c7e"
+  },
+  "CPU_tests": 191,
+  "performance_benchmark": false,
+  "full_training_launched": false,
+  "raw_deleted": false,
+  "full_sampler_verification": {
+    "sampler": {
+      "passed": true,
+      "epoch": 1794239720.7572296,
+      "tasks": {
+        "regression": {
+          "passed": true,
+          "view": "query_200",
+          "eligible_labels": 1977805,
+          "sampling_pools_cover_every_eligible_label": true,
+          "batch64_layout_checked_without_loading_batch64_tensors": true,
+          "rankable_groups": 49615,
+          "absolute_only_pool": 827608,
+          "class_pools": {}
+        },
+        "classification": {
+          "passed": true,
+          "view": "query_200",
+          "eligible_labels": 3191859,
+          "sampling_pools_cover_every_eligible_label": true,
+          "batch64_layout_checked_without_loading_batch64_tensors": true,
+          "rankable_groups": 0,
+          "absolute_only_pool": 0,
+          "class_pools": {
+            "(0, 0)": 649660,
+            "(1, 0)": 1339192,
+            "(0, 1)": 1203007
+          }
+        }
+      },
+      "full_training_launched": false,
+      "GPU_used": false,
+      "source_changed": false
+    },
+    "config": {
+      "status": "training_template_not_launched",
+      "seed": 20261109,
+      "data": {
+        "manifest": "/scratch/t530a05/kfold/experiments/pli-head-training-20261110-retry3/data/labels.sqlite",
+        "catalog": "/scratch/t530a05/kfold/experiments/biolip3-feature-production-20261109/training-cache-retry1/catalog.sqlite",
+        "view": "query_200",
+        "availability_sha256": "394df06a90d808625eee80b532ea0aec4a83a7abfbcc045f5a094f5463220f43"
+      },
+      "model": {
+        "channel_s": 384,
+        "channel_z": 256,
+        "blocks": 6,
+        "heads": 16,
+        "dropout": 0.1,
+        "outer_rank": 16,
+        "kernel_backend": "torch"
+      },
+      "optimizer": {
+        "lr": 0.0001,
+        "weight_decay": 0.001
+      },
+      "sampling": {
+        "regression": {
+          "groups": 12,
+          "group_size": 5,
+          "singleton_slots": 4,
+          "batch_size": 64
+        },
+        "classification": {
+          "batch_size": 64
+        }
+      },
+      "gradient_clip": 10.0,
+      "max_steps": 10000,
+      "checkpoint_every": 500,
+      "validate_every": 1000,
+      "validation_batch_size": 4,
+      "regression": {
+        "absolute_weight": 0.1,
+        "difference_weight": 0.9,
+        "huber_delta": 0.5,
+        "censored_point_targets": false
+      },
+      "classification": {
+        "threshold_pActivity": 6.0,
+        "measured_positive_fraction": 0.5,
+        "measured_negative_fraction": 0.25,
+        "synthetic_negative_fraction": 0.25
+      },
+      "ablation_variants": [
+        "colleague_cross",
+        "full_pair_control",
+        "slm_outer"
+      ],
+      "limitations": [
+        "Pilot uses batch4 rather than unverified production batch64",
+        "s_lm mixes sequence and apo; outer ablation is not pure-apo causal isolation",
+        "Frozen consensus excluded from model-selection training until split-specific replan",
+        "Single-GPU entrypoint; multi-node DDP not validated"
+      ]
+    },
+    "slurm": "1246538|COMPLETED|0:0|00:00:40|billing=72,cpu=72,energy=40127,gres/gpu=1,mem=194976M,node=1\n"
+  },
+  "batch16_readiness": {
+    "result": {
+      "passed": true,
+      "job": "1246559",
+      "conditions": [
+        {
+          "task": "regression",
+          "variant": "colleague_cross",
+          "passed": true,
+          "batch_size": 16,
+          "blocks": 6,
+          "updates": 1,
+          "loss": 0.7859340906143188,
+          "gradient_norm": 0.31185010075569153,
+          "seconds": 1.9244914054870605,
+          "peak_reserved_bytes": 43872419840,
+          "memory_bytes": 102005473280,
+          "training_rows": [
+            92525,
+            321484,
+            577396,
+            1363106,
+            1227624,
+            236077,
+            475296,
+            1265886,
+            343656,
+            399970,
+            787150,
+            1010988,
+            19818,
+            1822215,
+            1508416,
+            1319288
+          ],
+          "nonrankable_absolute_slots": 1,
+          "synthetic_rows": 0
+        },
+        {
+          "task": "regression",
+          "variant": "full_pair_control",
+          "passed": true,
+          "batch_size": 16,
+          "blocks": 6,
+          "updates": 1,
+          "loss": 0.7859340906143188,
+          "gradient_norm": 0.31185010075569153,
+          "seconds": 1.5251708030700684,
+          "peak_reserved_bytes": 44528828416,
+          "memory_bytes": 102005473280,
+          "training_rows": [
+            92525,
+            321484,
+            577396,
+            1363106,
+            1227624,
+            236077,
+            475296,
+            1265886,
+            343656,
+            399970,
+            787150,
+            1010988,
+            19818,
+            1822215,
+            1508416,
+            1319288
+          ],
+          "nonrankable_absolute_slots": 1,
+          "synthetic_rows": 0
+        },
+        {
+          "task": "regression",
+          "variant": "slm_outer",
+          "passed": true,
+          "batch_size": 16,
+          "blocks": 6,
+          "updates": 1,
+          "loss": 0.7859340906143188,
+          "gradient_norm": 0.31185010075569153,
+          "seconds": 1.5215222835540771,
+          "peak_reserved_bytes": 44528828416,
+          "memory_bytes": 102005473280,
+          "training_rows": [
+            92525,
+            321484,
+            577396,
+            1363106,
+            1227624,
+            236077,
+            475296,
+            1265886,
+            343656,
+            399970,
+            787150,
+            1010988,
+            19818,
+            1822215,
+            1508416,
+            1319288
+          ],
+          "nonrankable_absolute_slots": 1,
+          "synthetic_rows": 0
+        },
+        {
+          "task": "classification",
+          "variant": "colleague_cross",
+          "passed": true,
+          "batch_size": 16,
+          "blocks": 6,
+          "updates": 1,
+          "loss": 0.6931471824645996,
+          "gradient_norm": 0.2632620334625244,
+          "seconds": 1.5465500354766846,
+          "peak_reserved_bytes": 44291850240,
+          "memory_bytes": 102005473280,
+          "training_rows": [
+            163717,
+            343398,
+            3507598,
+            631711,
+            1276639,
+            656161,
+            2836170,
+            998066,
+            29266,
+            1457343,
+            2856446,
+            1682140,
+            2128016,
+            1678893,
+            3227093,
+            475112
+          ],
+          "nonrankable_absolute_slots": 0,
+          "synthetic_rows": 4
+        },
+        {
+          "task": "classification",
+          "variant": "full_pair_control",
+          "passed": true,
+          "batch_size": 16,
+          "blocks": 6,
+          "updates": 1,
+          "loss": 0.6931471824645996,
+          "gradient_norm": 0.2632620334625244,
+          "seconds": 1.5168185234069824,
+          "peak_reserved_bytes": 44495273984,
+          "memory_bytes": 102005473280,
+          "training_rows": [
+            163717,
+            343398,
+            3507598,
+            631711,
+            1276639,
+            656161,
+            2836170,
+            998066,
+            29266,
+            1457343,
+            2856446,
+            1682140,
+            2128016,
+            1678893,
+            3227093,
+            475112
+          ],
+          "nonrankable_absolute_slots": 0,
+          "synthetic_rows": 4
+        },
+        {
+          "task": "classification",
+          "variant": "slm_outer",
+          "passed": true,
+          "batch_size": 16,
+          "blocks": 6,
+          "updates": 1,
+          "loss": 0.6931471824645996,
+          "gradient_norm": 0.2632620334625244,
+          "seconds": 1.51419997215271,
+          "peak_reserved_bytes": 44495273984,
+          "memory_bytes": 102005473280,
+          "training_rows": [
+            163717,
+            343398,
+            3507598,
+            631711,
+            1276639,
+            656161,
+            2836170,
+            998066,
+            29266,
+            1457343,
+            2856446,
+            1682140,
+            2128016,
+            1678893,
+            3227093,
+            475112
+          ],
+          "nonrankable_absolute_slots": 0,
+          "synthetic_rows": 4
+        }
+      ],
+      "raw_reads": [],
+      "full_training_launched": false
+    },
+    "receipt_sha256": "f26e4efbb2bba4aa045ec431e9bb3be1450e398df1c24d058e91392c3f435750",
+    "config": {
+      "status": "training_template_not_launched",
+      "seed": 20261109,
+      "data": {
+        "manifest": "/scratch/t530a05/kfold/experiments/pli-head-training-20261110-retry3/data/labels.sqlite",
+        "catalog": "/scratch/t530a05/kfold/experiments/biolip3-feature-production-20261109/training-cache-retry1/catalog.sqlite",
+        "view": "query_200",
+        "availability_sha256": "394df06a90d808625eee80b532ea0aec4a83a7abfbcc045f5a094f5463220f43"
+      },
+      "model": {
+        "channel_s": 384,
+        "channel_z": 256,
+        "blocks": 6,
+        "heads": 16,
+        "dropout": 0.1,
+        "outer_rank": 16,
+        "kernel_backend": "torch"
+      },
+      "optimizer": {
+        "lr": 0.0001,
+        "weight_decay": 0.001
+      },
+      "sampling": {
+        "regression": {
+          "groups": 3,
+          "group_size": 5,
+          "singleton_slots": 1,
+          "batch_size": 16
+        },
+        "classification": {
+          "batch_size": 16
+        }
+      },
+      "gradient_clip": 10.0,
+      "max_steps": 10000,
+      "checkpoint_every": 500,
+      "validate_every": 1000,
+      "validation_batch_size": 4,
+      "regression": {
+        "absolute_weight": 0.1,
+        "difference_weight": 0.9,
+        "huber_delta": 0.5,
+        "censored_point_targets": false
+      },
+      "classification": {
+        "threshold_pActivity": 6.0,
+        "measured_positive_fraction": 0.5,
+        "measured_negative_fraction": 0.25,
+        "synthetic_negative_fraction": 0.25
+      },
+      "ablation_variants": [
+        "colleague_cross",
+        "full_pair_control",
+        "slm_outer"
+      ],
+      "limitations": [
+        "s_lm mixes sequence and apo; outer ablation is not pure-apo causal isolation",
+        "Frozen consensus excluded from model-selection training until split-specific replan",
+        "Single-GPU entrypoint; multi-node DDP not validated",
+        "Batch16 tested for one update per condition; throughput and convergence not benchmarked"
+      ],
+      "reference_batch64_not_launched": {
+        "regression": {
+          "groups": 12,
+          "group_size": 5,
+          "singleton_slots": 4,
+          "batch_size": 64
+        },
+        "classification": {
+          "batch_size": 64
+        }
+      }
+    },
+    "slurm": "1246559|COMPLETED|0:0|00:01:08|billing=72,cpu=72,energy=41916,gres/gpu=1,mem=194976M,node=1\n"
+  }
+}
