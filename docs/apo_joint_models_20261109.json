@@ -1,0 +1,111 @@
+{
+  "format": 1,
+  "implementation_commit": "e936d5eac8ec03ec2137950fb12a90cf868f51ab",
+  "artifact_type": "full inference EMA state_dict; optimizer resume checkpoints excluded",
+  "models": [
+    {
+      "condition": "apo-joint-deep-update4000",
+      "variant": "deep",
+      "update": 4000,
+      "relation_depth": 3,
+      "ema_tensor_count": 2213,
+      "adapter_tensor_count": 165,
+      "checkpoint_sha256": "68c5b755ee88cabcae72e1fb6c85512c1cc9e4a91f850c7dd98a02c2518262a1",
+      "files": {
+        "config": {
+          "path": "config.yaml",
+          "bytes": 2807,
+          "sha256": "45be19e2ca852e6bb260a0990539b77bc89c3dd2e0bc047bd27772c4d2178f9d"
+        },
+        "weights": {
+          "path": "weights/kfold.pth",
+          "bytes": 1361550516,
+          "sha256": "0570667841fb72bd97526f3b70e8a7191876b18d994b86757b15270fc2afa992"
+        },
+        "receipt": {
+          "path": "export_receipt.json",
+          "bytes": 425,
+          "sha256": "42e4d3e484d075b35d4c94e353656f1d1f1012aba0d6521972ad48f1e17a8a3a"
+        }
+      }
+    },
+    {
+      "condition": "apo-joint-shallow-update3000",
+      "variant": "shallow",
+      "update": 3000,
+      "relation_depth": 1,
+      "ema_tensor_count": 2157,
+      "adapter_tensor_count": 109,
+      "checkpoint_sha256": "e1f4475fd742f10530d20c260ffa4e0084c614d4a8d9901bb680a833be08aeb2",
+      "files": {
+        "config": {
+          "path": "config.yaml",
+          "bytes": 2807,
+          "sha256": "88c10317c49a3eda0db4d53eec625be00ddec310062cfbd1d5dc2bc8b1d3904c"
+        },
+        "weights": {
+          "path": "weights/kfold.pth",
+          "bytes": 1360929820,
+          "sha256": "201d751f88945f094f528668074990b3ea8fc9221adbb13baa53efbf0bcc26b2"
+        },
+        "receipt": {
+          "path": "export_receipt.json",
+          "bytes": 428,
+          "sha256": "8ac267ff88192db906dafcb5833e16ad9803cf0fe3202843f8ec6b837cb0c492"
+        }
+      }
+    },
+    {
+      "condition": "apo-joint-shallow-update4000",
+      "variant": "shallow",
+      "update": 4000,
+      "relation_depth": 1,
+      "ema_tensor_count": 2157,
+      "adapter_tensor_count": 109,
+      "checkpoint_sha256": "7893a71dca989f84d387ca9b6e1ed42cb62fba5c7bf833ad18ef63d0036297ad",
+      "files": {
+        "config": {
+          "path": "config.yaml",
+          "bytes": 2807,
+          "sha256": "88c10317c49a3eda0db4d53eec625be00ddec310062cfbd1d5dc2bc8b1d3904c"
+        },
+        "weights": {
+          "path": "weights/kfold.pth",
+          "bytes": 1360929820,
+          "sha256": "824dfb76317f17174ce21c1b3ed5cc4301c789fde8c363efa80be4947dd05866"
+        },
+        "receipt": {
+          "path": "export_receipt.json",
+          "bytes": 428,
+          "sha256": "2f44d274aa8189601da846b2d867c5007134adc061acf5b66cb001f5aaadadb8"
+        }
+      }
+    },
+    {
+      "condition": "apo-joint-shallow-update10000",
+      "variant": "shallow",
+      "update": 10000,
+      "relation_depth": 1,
+      "ema_tensor_count": 2157,
+      "adapter_tensor_count": 109,
+      "checkpoint_sha256": "61a6e8d303aafa3ae86ae4c37e7ce29dfcd28aba1ac6577b247caad8d27093d6",
+      "files": {
+        "config": {
+          "path": "config.yaml",
+          "bytes": 2807,
+          "sha256": "88c10317c49a3eda0db4d53eec625be00ddec310062cfbd1d5dc2bc8b1d3904c"
+        },
+        "weights": {
+          "path": "weights/kfold.pth",
+          "bytes": 1360929820,
+          "sha256": "b4ae5dee6633a97c06319dc8608a19079c5b4059c40676aefea3e61906579313"
+        },
+        "receipt": {
+          "path": "export_receipt.json",
+          "bytes": 429,
+          "sha256": "5158845221bb00cf0721569efde572b2b5b74bdf95062d927a69b10f95efa2ea"
+        }
+      }
+    }
+  ]
+}

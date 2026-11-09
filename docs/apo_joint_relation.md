@@ -1,5 +1,8 @@
 # Candidate-conditioned apo relation adapters
 
+For a main-branch user's inference setup, delivered EMA models, and runnable
+examples, see the [handoff guide](handoff_apo_joint_inference.md).
+
 These opt-in training recipes compare a shallow relation encoder with two extra
 relation updates. They start independently from the original stage-3 **71K full
 checkpoint**. The old 5K apo-mean-mixer experiment is a separate baseline and is

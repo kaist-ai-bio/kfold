@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1190" viewBox="0 0 1400 1190" role="img" aria-label="K-Fold apo joint: generation, confidence and utility">
+<title>K-Fold apo joint: generation, confidence and utility</title>
+<desc>Frozen base and apo-combination trunks feed a learned generation mixer. Pre-trunk apo evidence separately conditions candidate confidence and utility. Learned modules have thick borders; frozen modules have dashed borders.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 z" fill="#000000"/>
+</marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<g font-family="Pretendard,Apple SD Gothic Neo,Noto Sans CJK KR,sans-serif" text-anchor="middle" fill="#000000">
+<text x="700" y="48" font-size="32" fill="#000000" font-weight="700">K-Fold · Apo mix + candidate-conditioned confidence</text>
+<text x="700" y="86" font-size="23" fill="#3D755D">굵은 테두리: 학습   ·   점선 테두리: 기존 가중치 고정   ·   입력 특징은 detach</text>
+<rect x="60" y="120" width="1280" height="90" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8"/>
+<text x="700" y="175" font-size="28" fill="#000000" font-weight="700">전체 complex 입력 · apo pool · 기존 ECSI prior</text>
+<path d="M 195 210 V 280" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 510 210 V 280" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 195 410 V 465 H 285 V 530" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 510 410 V 465 H 425 V 530" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 635 345 H 800" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)" stroke-dasharray="7 5"/>
+<path d="M 320 345 H 350 V 440 H 710 V 465 H 940 V 530" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)" stroke-dasharray="7 5"/>
+<path d="M 1065 410 V 460 H 940 V 530" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 1065 410 V 460 H 1225 V 530" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 355 660 V 765" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 355 865 V 970" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 535 1020 H 710 V 635 H 795" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)" stroke-dasharray="7 5"/>
+<path d="M 940 680 V 775" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 1225 680 V 775" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<path d="M 940 905 V 990" fill="none" stroke="#000000" stroke-width="2.1" marker-end="url(#arrow)"/>
+<rect x="70" y="280" width="250" height="130" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8" stroke-dasharray="9 6"/>
+<text x="195" y="322" font-size="25" fill="#000000" font-weight="700">고정: 기본 경로</text>
+<text x="195" y="356" font-size="25" fill="#000000" font-weight="700">multi-apo trunk</text>
+<text x="195" y="390" font-size="24" fill="#3D755D">z_base</text>
+<rect x="385" y="280" width="250" height="130" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8" stroke-dasharray="9 6"/>
+<text x="510" y="322" font-size="25" fill="#000000" font-weight="700">고정: branch 경로</text>
+<text x="510" y="356" font-size="25" fill="#000000" font-weight="700">조합별 trunk × K</text>
+<text x="510" y="390" font-size="24" fill="#3D755D">z_k</text>
+<rect x="800" y="280" width="530" height="130" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8"/>
+<text x="1065" y="323" font-size="27" fill="#000000" font-weight="700">Pre-trunk apo evidence</text>
+<text x="1065" y="357" font-size="23" fill="#3D755D">StructureEncoder single · ApoModule pair</text>
+<text x="1065" y="389" font-size="23" fill="#3D755D">apo 축 유지 + apo 내부 거리</text>
+<rect x="175" y="530" width="360" height="130" rx="12" fill="#ffffff" stroke="#000000" stroke-width="4"/>
+<text x="355" y="573" font-size="27" fill="#000000" font-weight="700">학습: structure_z</text>
+<text x="355" y="607" font-size="24" fill="#3D755D">Pair별 가중 pooling + null</text>
+<text x="355" y="639" font-size="24" fill="#3D755D">기본 z에 residual 추가</text>
+<rect x="175" y="765" width="360" height="100" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8" stroke-dasharray="9 6"/>
+<text x="355" y="809" font-size="26" fill="#000000" font-weight="700">고정: diffusion head</text>
+<text x="355" y="843" font-size="24" fill="#3D755D">s_inputs · prior 유지</text>
+<rect x="175" y="970" width="360" height="100" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8"/>
+<text x="355" y="1014" font-size="28" fill="#000000" font-weight="700">생성 후보 구조 x</text>
+<text x="355" y="1048" font-size="24" fill="#3D755D">복수 diffusion samples</text>
+<rect x="795" y="530" width="290" height="150" rx="12" fill="#ffffff" stroke="#000000" stroke-width="4"/>
+<text x="940" y="566" font-size="24" fill="#000000" font-weight="700">학습:</text>
+<text x="940" y="600" font-size="24" fill="#000000" font-weight="700">confidence_relation</text>
+<text x="940" y="634" font-size="22" fill="#3D755D">후보 + apo + partner</text>
+<text x="940" y="666" font-size="22" fill="#3D755D">독립 pair/single 경로</text>
+<rect x="1120" y="530" width="210" height="150" rx="12" fill="#ffffff" stroke="#000000" stroke-width="4"/>
+<text x="1225" y="566" font-size="23" fill="#000000" font-weight="700">학습:</text>
+<text x="1225" y="600" font-size="23" fill="#000000" font-weight="700">apo_selector</text>
+<text x="1225" y="634" font-size="22" fill="#3D755D">자체 projection</text>
+<text x="1225" y="666" font-size="22" fill="#3D755D">후보 입력 없음</text>
+<rect x="795" y="775" width="290" height="130" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8" stroke-dasharray="9 6"/>
+<text x="940" y="817" font-size="25" fill="#000000" font-weight="700">고정: 기존</text>
+<text x="940" y="851" font-size="25" fill="#000000" font-weight="700">confidence head</text>
+<text x="940" y="885" font-size="22" fill="#3D755D">후보 하나당 평가</text>
+<rect x="1120" y="775" width="210" height="130" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8"/>
+<text x="1225" y="818" font-size="25" fill="#000000" font-weight="700">Utility U_k</text>
+<text x="1225" y="852" font-size="21" fill="#3D755D">조합별 점수</text>
+<text x="1225" y="884" font-size="21" fill="#3D755D">선택적 사전 top-K</text>
+<rect x="795" y="990" width="535" height="80" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.8"/>
+<text x="1062.5" y="1024" font-size="27" fill="#000000" font-weight="700">기존 confidence 출력</text>
+<text x="1062.5" y="1058" font-size="22" fill="#3D755D">기존 ranking 유지 · utility 자동 합산 없음</text>
+<text x="700" y="330" font-size="19" fill="#3D755D">pre-trunk</text>
+<text x="535" y="430" font-size="20" fill="#3D755D">base z · s_lm</text>
+<text x="355" y="715" font-size="24" fill="#3D755D">z_struct</text>
+<text x="355" y="922" font-size="23" fill="#3D755D">구조 생성</text>
+<text x="940" y="729" font-size="22" fill="#3D755D">delta_z · delta_s_lm</text>
+<text x="655" y="844" font-size="20" fill="#3D755D">후보 geometry</text>
+<text x="655" y="874" font-size="20" fill="#3D755D">detach</text>
+<text x="700" y="1135" font-size="23" fill="#3D755D">Partner 정보: 생성은 전체-system z, confidence·utility는 다른 chain 입력/apo 특징을 함께 사용</text>
+</g>
+</svg>

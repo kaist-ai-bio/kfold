@@ -1,5 +1,8 @@
 # K-Fold inference
 
+For the experimental apo joint checkpoints and their differences from main,
+see the [apo joint handoff guide](handoff_apo_joint_inference.md).
+
 K-Fold accepts YAML or JSON files describing proteins, DNA, RNA, and ligands.
 Inference requires a CUDA GPU.
 No MSA search or sequence database is required.
