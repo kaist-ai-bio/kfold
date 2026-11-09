@@ -290,20 +290,6 @@ def normalize_apo_feature_taps(capture, f, reference):
     return capture
 
 
-def batch_apo_branches(branches):
-    """Concatenate complete apo assignments in branch-major batch order."""
-    first = branches[0]
-    return replace(
-        first,
-        **{
-            name: getattr(first, name).concatenate(
-                [getattr(branch, name) for branch in branches], dim=0
-            )
-            for name in ("chain", "token", "atom", "bond", "sequence")
-        },
-    )
-
-
 @torch.no_grad()
 def capture_pre_trunk_apo_features(model, f, reference):
     """Read raw apo evidence without a sequence LM or folding trunk call."""
@@ -329,11 +315,11 @@ def mix_representations(
     *,
     apo_trunk_recycles=None,
 ):
-    """Run batched apo trunks and mix their representations.
+    """Run complete-complex apo trunks sequentially and mix their representations.
 
     Training inherits the main recycle count. Inference supplies its independent
     branch count. Extra feature/trunk work never advances the generation RNG.
-    Branches occupy separate batch rows and use independent stochastic draws.
+    Each branch includes all chains and uses the same stochastic stream.
     """
     config = model.apo_repr_mix_config
     cap = config.max_combinations if max_combinations is None else max_combinations
@@ -347,6 +333,7 @@ def mix_representations(
         if f.device.type == "cuda"
         else []
     )
+    zs, ss, taps = [], [], []
     with torch.random.fork_rng(devices=devices), torch.no_grad():
         if preselected is None:
             branches, valid, assignments = make_apo_branches(
@@ -358,41 +345,37 @@ def mix_representations(
             branches = preselected["branches"]
             valid = preselected["valid"]
             assignments = preselected["assignments"]
-        batched = batch_apo_branches(branches)
-        count, batch_size = len(branches), f.batch_size
-        if config.relation_depth:
-            capture = {}
-            _, branch_s, branch_z = model.run_trunk(
-                batched, branch_recycles, feature_taps=capture
-            )
-            capture = normalize_apo_feature_taps(capture, batched, branch_s)
-        else:
-            _, branch_s, branch_z = model.run_trunk(batched, branch_recycles)
-        branch_z = branch_z.detach().unflatten(0, (count, batch_size)).transpose(0, 1)
-        branch_s = branch_s.detach().unflatten(0, (count, batch_size)).transpose(0, 1)
+        for branch in branches:
+            # Share the dropout stream across complete-complex assignments.
+            with torch.random.fork_rng(devices=devices):
+                if config.relation_depth:
+                    capture = {}
+                    _, branch_s, branch_z = model.run_trunk(
+                        branch, branch_recycles, feature_taps=capture
+                    )
+                    taps.append(normalize_apo_feature_taps(capture, branch, branch_s))
+                else:
+                    _, branch_s, branch_z = model.run_trunk(branch, branch_recycles)
+            zs.append(branch_z.detach())
+            ss.append(branch_s.detach())
+    branch_z = torch.stack(zs, 1)
+    branch_s = torch.stack(ss, 1)
     model.last_apo_mix_assignments = assignments
     if config.relation_depth:
         context = {
-            name: capture[name]
-            .unflatten(0, (count, batch_size))
-            .transpose(0, 1)
-            .flatten(1, 2)
+            name: torch.cat([tap[name] for tap in taps], 1)
             for name in ("apo_single", "apo_single_mask", "apo_pair", "apo_pair_mask")
         }
         with torch.no_grad():
             if f.token.apo_repr_coords.shape[2] == 0:
-                coords = z.new_zeros(batch_size, count, z.shape[1], 3)
+                coords = z.new_zeros(f.batch_size, len(branches), z.shape[1], 3)
                 masks = torch.zeros(coords.shape[:-1], dtype=torch.bool, device=f.device)
             else:
-                coords = (
-                    batched.token.apo_repr_coords[:, :, 0]
-                    .unflatten(0, (count, batch_size))
-                    .transpose(0, 1)
+                coords = torch.stack(
+                    [branch.token.apo_repr_coords[:, :, 0] for branch in branches], 1
                 )
-                masks = (
-                    batched.token.apo_repr_mask[:, :, 0]
-                    .unflatten(0, (count, batch_size))
-                    .transpose(0, 1)
+                masks = torch.stack(
+                    [branch.token.apo_repr_mask[:, :, 0] for branch in branches], 1
                 )
             geom_mask = (
                 context["apo_pair_mask"] & masks[..., :, None] & masks[..., None, :]

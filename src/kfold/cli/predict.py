@@ -85,7 +85,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--max-apo-combinations",
         type=int,
         default=3,
-        help="Maximum complex apo combinations for a representation-mixing checkpoint (default: 3).",
+        help="Maximum complex apo combinations for a representation-mixing (default: 3).",
     )
     parser.add_argument(
         "--num-samples",
