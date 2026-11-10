@@ -35,7 +35,8 @@ def test_tracking_never_uploads_sources_and_requires_existing_run_on_resume(tmp_
     settings=dict(enabled=True,entity='K-Fold-Affinity',project='initial training',run_ids={'regression':'fixed'},group='baseline')
     assert start_tracking({},tmp_path,task='regression',variant='colleague_cross',contract='a',config={'seed':1}) is None
     for resume in (False,True):
-        start_tracking(settings,tmp_path,task='regression',variant='colleague_cross',contract='a',config={'seed':1},resume=resume)
+        start_tracking(settings,tmp_path,task='regression',variant='colleague_cross',contract='a',
+                       config={'seed':1,'variant':'colleague_cross'},resume=resume)
     assert [x['resume'] for x in calls]==['never','must']
     assert calls[0]['settings'].values['save_code'] is False
     assert calls[0]['settings'].values['disable_git'] is True

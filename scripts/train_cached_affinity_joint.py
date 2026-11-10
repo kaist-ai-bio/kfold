@@ -67,7 +67,7 @@ def main():
     contract=hashlib.sha256(json.dumps(dict(config=c,world=world,pilot=a.pilot,
         manifest_sha256=gate['manifest_sha256']),sort_keys=True).encode()).hexdigest()
     torch.manual_seed(c['seed']);torch.cuda.manual_seed(c['seed'])
-    hc=HeadConfig(variant='colleague_cross',**c['model']);bare=JointAffinityHead(hc).to(device)
+    hc=HeadConfig(variant=c.get('variant','colleague_cross'),**c['model']);bare=JointAffinityHead(hc).to(device)
     model=DDP(bare,device_ids=[local],broadcast_buffers=False,gradient_as_bucket_view=True)
     opt=torch.optim.AdamW(bare.parameters(),**c['optimizer']);start=0;state=None
     if a.resume:
@@ -102,7 +102,7 @@ def main():
             gradient_accumulation=1,global_batch=1024,**c))
     tracker=None
     if rank==0 and not a.pilot:
-        tracker=start_tracking(c['wandb'],out,task='joint',variant='shared_cross_dual_output',
+        tracker=start_tracking(c['wandb'],out,task='joint',variant=hc.variant,
             contract=contract,config=c,resume=bool(a.resume))
         save(out/'wandb-run.json',dict(id=tracker.id,url=tracker.url,project=tracker.project,entity=tracker.entity))
     stop=[]
@@ -172,7 +172,11 @@ def main():
         terms=joint_loss_terms(outputs,rows,**c['loss']);loss,counts=normalized_joint_loss(terms)
         assert torch.isfinite(loss);loss.backward()
         if a.pilot:
-            for label,module in [('shared',bare.shared),('value_head',bare.value_head),('binary_head',bare.binary_head)]:
+            modules=[('shared',bare.shared),('value_head',bare.value_head),('binary_head',bare.binary_head)]
+            if bare.shared.proddiff is not None:
+                modules.extend([('proddiff',bare.shared.proddiff),('proddiff_norm',bare.shared.proddiff.norm),
+                                ('proddiff_projection',bare.shared.proddiff.output)])
+            for label,module in modules:
                 if any(p.grad is not None and bool(p.grad.abs().sum()>0) for p in module.parameters()):nonzero.add(label)
         norm=torch.nn.utils.clip_grad_norm_(bare.parameters(),c['gradient_clip'],error_if_nonfinite=True);opt.step()
         sample_proofs.append(hashlib.sha256(json.dumps([r['row_id'] for r in rows]).encode()).hexdigest())
@@ -181,7 +185,7 @@ def main():
             sums=torch.stack([terms.sums[k].detach().double() for k in ('absolute','difference','binary')]);dist.all_reduce(sums)
             means=sums/counts.clamp_min(1);timing=torch.tensor([loaded-last,now-loaded],device=device)
             dist.all_reduce(timing,op=dist.ReduceOp.MAX)
-            progress=dict(epoch=time.time(),updates=updates,max_steps=target,gradient_accumulation=1,
+            progress=dict(epoch=time.time(),updates=updates,max_steps=target,variant=hc.variant,gradient_accumulation=1,
                 batch_per_rank=16,world_size=world,global_batch=1024,tokens=tokens,
                 gradient_norm=float(norm),metrics=dict(absolute_huber=float(means[0]),difference_huber=float(means[1]),
                     focal=float(means[2]),loss=float(.1*means[0]+.9*means[1]+means[2])),
@@ -217,7 +221,9 @@ def main():
         nonzero_gradient_modules=sorted(nonzero),peak_reserved_bytes=torch.cuda.max_memory_reserved(local))) if a.pilot else None
     if a.pilot:
         assert len({s['parameter_sha256'] for s in states})==1
-        if not a.resume:assert all(s['nonzero_gradient_modules']==['binary_head','shared','value_head'] for s in states)
+        expected=['binary_head','shared','value_head']
+        if bare.shared.proddiff is not None:expected.extend(['proddiff','proddiff_norm','proddiff_projection'])
+        if not a.resume:assert all(s['nonzero_gradient_modules']==sorted(expected) for s in states)
     if rank==0:
         save(out/'completion.json',dict(passed=True,epoch=time.time(),task='joint',updates=updates,
             phase='pilot' if a.pilot else 'training',world_size=world,batch_per_rank=16,global_batch=1024,

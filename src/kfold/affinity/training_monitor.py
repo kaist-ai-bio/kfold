@@ -38,11 +38,13 @@ def start_tracking(settings, output, *, task, variant, contract, config, resume=
     if not settings.get('enabled', False):
         return None
     import wandb
+    run_config = dict(config)
+    run_config.update(task=task,variant=variant,training_contract_sha256=contract)
     run = wandb.init(entity=settings['entity'], project=settings['project'],
         id=settings['run_ids'][task], name=f'{task}-{variant}-seed{config["seed"]}',
         group=settings['group'], job_type=task, dir=str(output),
         mode='online', resume='must' if resume else 'never',
-        config=dict(task=task, variant=variant, training_contract_sha256=contract, **config),
+        config=run_config,
         settings=wandb.Settings(init_timeout=60, disable_git=True, save_code=False, console='off'))
     run.define_metric('update')
     run.define_metric('train/*', step_metric='update')
