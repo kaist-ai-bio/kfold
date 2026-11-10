@@ -1,5 +1,15 @@
 # Affinity head: baseline, controlled outer-product ablation and training preparation
 
+## Initial production launch, 2026-11-10
+
+The user authorized initial head training after data preservation and cache relocation completed. The first launch is the `colleague_cross` baseline with separate regression and classification models, one GPU each, seed20261109, batch16, AdamW1e-4/weight-decay1e-3 and a finite10,000-update budget. It is an initial optimization stage, not a claim of converged or full-epoch training. The prepared `full_pair_control` and `slm_outer` ablations are not launched in this stage.
+
+The private Forge/W&B project is `K-Fold-Affinity/initial training`. Scalar losses, gradient norms, learning rate, throughput and internal-validation metrics are logged online; code snapshots, source labels, cache payloads and model artifacts are not uploaded. Checkpoints stay in scratch every500updates. Run IDs and resolved config are frozen in the launch receipts; resume requires the same contract and existing online run.
+
+Every1,000updates, a deterministic panel of up to1,024eligible labels per original cohort/endpoint monitors the internal chemical-group holdout. The final checkpoint receives full internal-validation evaluation. Neither external novelty evaluation nor the kinase auxiliary set selects checkpoints. The original chemical split, view exclusions, task sampler, network and objectives remain unchanged. Allocation warnings drain at a checkpoint; an interrupted run is not reported complete or automatically resubmitted. Full internal validation must finish for a successful completion receipt.
+
+Launch root: `/scratch/t530a05/kfold/experiments/pli-initial-training-20261110`; initial jobs1249389(regression) and1249390(classification), each1GPU/72allocatedCPU/24h cap. The first real optimizer update and online run registration were verified. The launch adds fixed-panel/tracking helpers and skips resumed sampler positions before payload I/O. CPU affinity tests:193passed. The pinned launch source is independent of the earlier pilot directory. Earlier preparation/pilot descriptions below are historical evidence.
+
 ## Frozen data and supervision
 
 Data preparation is frozen at commit f2775385. The logical release contains 2,817,891 cached inputs. The backbone is not optimized or rerun for head training. Raw features, source labels, immutable historical routes, original relations and experimental/synthetic provenance are preserved. No additional apo side-cache is produced: `s_lm` already contains mixed sequence and projected apo information. This experiment tests direct head access through a new pair construction, not the presence versus absence of apo information in the overall model.
