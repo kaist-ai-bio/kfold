@@ -15,7 +15,7 @@ from kfold.affinity.heads import HeadConfig
 from kfold.affinity.training_data import CachedLabelDataset,TaskBatchSampler,collate_cached
 from kfold.affinity.distributed_training import rank_seed,initialize_worker,colleague_validation_metrics
 from kfold.affinity.joint_training import (JointAffinityHead,JointDataset,JointBatchSampler,
-    collate_joint,joint_loss_terms,normalized_joint_loss)
+    BinaryFiveSampler,collate_joint,joint_loss_terms,normalized_joint_loss)
 from kfold.affinity.training_monitor import validation_positions,scalar_report,start_tracking
 from kfold.affinity.pilot import metrics,save,parameter_sha
 
@@ -83,6 +83,10 @@ def main():
         sampler=TaskBatchSampler.__new__(TaskBatchSampler)
         sampler.__dict__.update(sample_state[task]);sampler.dataset=train[task]
         sampler.seed=rank_seed(c['seed'],rank)+(0 if task=='regression' else 1);sampler.batches=target
+        if task=='regression':
+            sampler.groups=2;sampler.group_size=5;sampler.singletons=1;sampler.batch_size=11
+        else:
+            sampler=BinaryFiveSampler(sampler.class_pools,batches=target,seed=sampler.seed)
         samplers[task]=sampler
     joint=JointDataset(train['regression'],train['classification'],sample_state['bound_rows'])
     sampler=JointBatchSampler(samplers['regression'],samplers['classification'],start=start,

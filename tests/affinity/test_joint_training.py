@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from kfold.affinity.joint_training import (JointAffinityHead,activity_interval,
-    joint_loss_terms,normalized_joint_loss,JointBatchSampler)
+    joint_loss_terms,normalized_joint_loss,JointBatchSampler,BinaryFiveSampler)
 from kfold.affinity.heads import HeadConfig
 from kfold.affinity.reference_losses import boltz2_continuous_affinity_loss
 
@@ -94,8 +94,8 @@ def test_joint_batch_sampler_never_splits_groups_and_resume_is_exact():
         def __init__(self,rows):self.rows=rows
         def __len__(self):return len(self.rows)
         def __iter__(self):return iter(self.rows)
-    reg=Sampler([list(range(10))+[(99,'a'),(100,'b')]]*3)
-    cl=Sampler([[201,202,203,204]]*3)
+    reg=Sampler([list(range(10))+[(99,'a')]]*3)
+    cl=Sampler([[201,202,203,204,205]]*3)
     all_batches=list(JointBatchSampler(reg,cl,seed=17,bound_count=1))
     assert list(JointBatchSampler(reg,cl,start=2,seed=17,bound_count=1))==all_batches[2:]
     assert all(len(batch)==16 for batch in all_batches)
@@ -114,3 +114,21 @@ def test_masked_sum_normalization_is_global_not_an_average_of_rank_means():
         combined+=sum(w*part.sums[k]/max(full.counts[k],1) for k,w in [('absolute',.1),('difference',.9),('binary',1.)])
     check=torch.autograd.grad(combined,(p,b))
     for a,c in zip(g,check):torch.testing.assert_close(a,c)
+
+
+def test_binary_five_focal_sampling_has_one_binder_four_negatives_and_exact_resume_stream():
+    pools={(1,0):[1,2,3],(0,0):[4,5,6],(0,1):[7,8,9]}
+    sampler=BinaryFiveSampler(pools,batches=5,seed=13)
+    batches=list(sampler);assert batches==list(sampler)
+    for batch in batches:
+        assert len(batch)==5
+        assert sum(x in pools[(1,0)] for x in batch)==1
+        assert sum(x in pools[(0,0)] for x in batch)==2
+        assert sum(x in pools[(0,1)] for x in batch)==2
+
+
+def test_task_stream_masks_do_not_leak_continuous_labels_into_focal_balance():
+    rows=[row(0,joint_continuous=True,joint_binary=False),
+          row(1,joint_continuous=False,joint_binary=True)]
+    terms=joint_loss_terms(dict(value=torch.ones(2,requires_grad=True),logits=torch.zeros(2,requires_grad=True)),rows)
+    assert terms.counts==dict(absolute=1,difference=0,binary=1)

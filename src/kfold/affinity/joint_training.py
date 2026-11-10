@@ -81,6 +81,7 @@ def joint_loss_terms(outputs, rows, *, delta=.5, gamma=1., alpha=.8):
         raise ValueError('Invalid Boltz-2 loss hyperparameters')
     zero_v, zero_b = value.sum()*0, logits.sum()*0
     intervals = [activity_interval(r) for r in rows]
+    intervals = [bounds if r.get('joint_continuous',True) else None for bounds,r in zip(intervals,rows)]
     valid = [i for i, bounds in enumerate(intervals) if bounds is not None]
     sums = dict(absolute=zero_v, difference=zero_v, binary=zero_b)
     counts = dict(absolute=len(valid), difference=0, binary=0)
@@ -109,7 +110,7 @@ def joint_loss_terms(outputs, rows, *, delta=.5, gamma=1., alpha=.8):
         sums['difference'] = sums['difference'] + interval_huber(
             value[list(left)]-value[list(right)], lo, hi, delta).mean()
         counts['difference'] += 1
-    binary = [i for i,r in enumerate(rows) if r['classification_valid']]
+    binary = [i for i,r in enumerate(rows) if r['classification_valid'] and r.get('joint_binary',True)]
     if binary:
         target = logits.new_tensor([rows[i]['binary'] for i in binary])
         if not ((target == 0) | (target == 1)).all():
@@ -148,16 +149,45 @@ class JointDataset:
         task, position, group = tagged
         if task == 'bound':
             row = dict(self.bound_rows[position]);row['loss_group'] = group
-            return self.datasets['regression'].load_row(row)
-        return self.datasets[task][(position,group)]
+            x,row = self.datasets['regression'].load_row(row)
+        else:
+            x,row = self.datasets[task][(position,group)]
+        row=dict(row,joint_continuous=task!='classification',joint_binary=task=='classification')
+        return x,row
+
+
+class BinaryFiveSampler:
+    """One measured binder +4 negatives; retain measured/synthetic provenance.
+
+    The approved corpus has no experimental assay ID for synthetic negatives.
+    Do not invent one: unlike the original Boltz sampler this draws from the
+    existing global pools, with two measured and two synthetic negatives.
+    """
+    def __init__(self, pools, *, batches, seed):
+        self.pools,self.batches,self.seed = pools,batches,seed
+        if any(not pools[k] for k in ((1,0),(0,0),(0,1))):
+            raise ValueError('All three approved binary provenance pools required')
+
+    def __len__(self):return self.batches
+
+    def __iter__(self):
+        rng=random.Random(self.seed)
+        for _ in range(self.batches):
+            result=[]
+            for key,count in [((1,0),1),((0,0),2),((0,1),2)]:
+                pool=self.pools[key]
+                result.extend(rng.sample(pool,count) if len(pool)>=count else rng.choices(pool,k=count))
+            rng.shuffle(result)
+            yield result
 
 
 class JointBatchSampler:
-    """B16: 2 complete 5-ligand assays +2 absolute slots +4 binary slots.
+    """B16: 2 complete 5-ligand assays +1 absolute slot +5 binary slots.
 
     Existing measured/synthetic pools and internal split remain authoritative.
     This is an adaptation to our corpus, not Boltz-2's PubChem source mixture.
-    Binary labels on continuous rows also supervise the binary head.
+    Distinct supervision flags avoid changing the 1:4 focal sampling ratio by
+    adding threshold-derived labels from the continuous sampling stream.
     """
     def __init__(self, regression, classification, *, start=0, bound_count=0, seed=0):
         if len(regression) != len(classification):
@@ -184,7 +214,7 @@ class JointBatchSampler:
             rng = random.Random(f'{self.seed}:bound:{update}')
             probability = self.bound_count / (self.bound_count+len(self.regression.singleton_pool))
             if self.bound_count and rng.random() < probability:
-                batch[11] = ('bound',rng.randrange(self.bound_count),'absolute:bound')
+                batch[10] = ('bound',rng.randrange(self.bound_count),'absolute:bound')
             batch += [('classification',p,f'binary:{slot}') for slot,p in enumerate(cl)]
             if len(batch) != 16:
                 raise ValueError('Physical batch16 required; no gradient accumulation')
