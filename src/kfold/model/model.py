@@ -673,6 +673,7 @@ class KFold(torch.nn.Module):
                 snapshot_download(
                     repo_id,
                     repo_type="model",
+                    revision="apo-joint" if repo_id == MODEL_REPO_ID else None,
                     cache_dir=cache_dir,
                 )
             )
