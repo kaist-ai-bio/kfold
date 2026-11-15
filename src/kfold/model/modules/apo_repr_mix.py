@@ -313,21 +313,25 @@ def mix_representations(
     training=False,
     preselected=None,
     *,
-    apo_trunk_recycles=None,
+    apo_adapter=True,
 ):
-    """Run complete-complex apo trunks sequentially and mix their representations.
+    """Mix sequential apo trunks or capture only pre-trunk apo evidence.
 
-    Training inherits the main recycle count. Inference supplies its independent
-    branch count. Extra feature/trunk work never advances the generation RNG.
+    Training inherits the main recycle count. Inference uses two recycles.
+    Extra feature/trunk work never advances the generation RNG.
     Each branch includes all chains and uses the same stochastic stream.
     """
     config = model.apo_repr_mix_config
     cap = config.max_combinations if max_combinations is None else max_combinations
     if cap < 1:
         raise ValueError("max_combinations must be positive")
-    branch_recycles = num_recycles if apo_trunk_recycles is None else apo_trunk_recycles
-    if branch_recycles < 0:
-        raise ValueError("apo_trunk_recycles must be non-negative")
+    branch_recycles = num_recycles if training else 2
+    if training and not apo_adapter:
+        raise ValueError("Skipping apo trunks is inference-only")
+    if not apo_adapter and not config.relation_depth:
+        model.last_apo_mix_assignments = None
+        model.last_apo_mix_context = None
+        return z.detach(), z.detach(), lm.detach()
     devices = (
         [f.device.index if f.device.index is not None else torch.cuda.current_device()]
         if f.device.type == "cuda"
@@ -348,6 +352,9 @@ def mix_representations(
         for branch in branches:
             # Share the dropout stream across complete-complex assignments.
             with torch.random.fork_rng(devices=devices):
+                if not apo_adapter:
+                    taps.append(capture_pre_trunk_apo_features(model, branch, lm))
+                    continue
                 if config.relation_depth:
                     capture = {}
                     _, branch_s, branch_z = model.run_trunk(
@@ -358,8 +365,9 @@ def mix_representations(
                     _, branch_s, branch_z = model.run_trunk(branch, branch_recycles)
             zs.append(branch_z.detach())
             ss.append(branch_s.detach())
-    branch_z = torch.stack(zs, 1)
-    branch_s = torch.stack(ss, 1)
+    if apo_adapter:
+        branch_z = torch.stack(zs, 1)
+        branch_s = torch.stack(ss, 1)
     model.last_apo_mix_assignments = assignments
     if config.relation_depth:
         context = {
@@ -386,8 +394,10 @@ def mix_representations(
         context.update(
             valid=valid,
             branches=branches,
-            branch_z=branch_z,
-            branch_s=branch_s,
         )
+        if apo_adapter:
+            context.update(branch_z=branch_z, branch_s=branch_s)
         model.last_apo_mix_context = context
+    if not apo_adapter:
+        return z.detach(), z.detach(), lm.detach()
     return model.apo_repr_mix(z.detach(), lm.detach(), branch_z, branch_s, valid)

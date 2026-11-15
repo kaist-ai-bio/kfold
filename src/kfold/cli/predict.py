@@ -100,10 +100,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         help="Number of recycling iterations (default: 10).",
     )
     parser.add_argument(
-        "--apo-trunk-recycles",
-        type=int,
-        default=2,
-        help="Recycles for extra apo trunks (default: 2).",
+        "--enable-apo-adapter",
+        action="store_true",
+        help="Run additional apo trunks and mix their representations.",
     )
     parser.add_argument(
         "--num-steps",
@@ -254,8 +253,6 @@ def _load_queries(args: argparse.Namespace) -> list[Query]:
             raise ValueError(f"--{name.replace('_', '-')} must be between 1 and 5.")
     if args.max_apo_combinations is not None and args.max_apo_combinations < 1:
         raise ValueError("--max-apo-combinations must be positive")
-    if args.apo_trunk_recycles < 0:
-        raise ValueError("--apo-trunk-recycles must be non-negative.")
     for name in ("num_samples", "num_recycles", "num_steps"):
         if getattr(args, name) < 1:
             raise ValueError(f"--{name.replace('_', '-')} must be positive.")
