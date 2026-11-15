@@ -21,7 +21,9 @@ import torch.nn.functional as F
 
 from kfold.data.types.model_input import FoldingInput
 from kfold.model.model import KFold, KFoldConfig
-from kfold.model.modules.apo_repr_mix import ResidualSetMixer, mix_representations
+from kfold.model.modules.apo_execution import ApoOutput, run_apo_joint
+from kfold.model.modules.apo_features import fill_missing_apo_features
+from kfold.model.modules.apo_repr_mix import ResidualSetMixer
 from kfold.model.modules.ecsi import ECSISOARConfig
 from kfold.utils.runtime import is_cuequivariance_installed
 
@@ -143,30 +145,44 @@ class KFoldForTrain(KFold):
             return getattr(module, "_orig_mod", module)
         return module
 
-    def _encode_lm_single(
-        self, f_input: FoldingInput, *, feature_taps: dict | None = None
-    ) -> torch.Tensor:
-        """Merge the enabled pretrained encoders into the shared LM single."""
-        prot_seq_encoder = self._get_model_module(self.prot_seq_encoder)
-        rna_seq_encoder = self._get_model_module(self.rna_seq_encoder)
-        prot_struct_encoder = self._get_model_module(self.prot_struct_encoder)
+    def _encode_sequence_single(self, f_input: FoldingInput) -> torch.Tensor:
+        """Encode sequences using the appropriate compiled training modules."""
+        protein_encoder = self._get_model_module(self.prot_seq_encoder)
+        rna_encoder = self._get_model_module(self.rna_seq_encoder)
+        single = self.prot_seq_to_s_lm(protein_encoder(f_input))
+        if rna_encoder is not None:
+            single = single + self.rna_seq_to_s_lm(rna_encoder(f_input))
+        return single
 
-        assert prot_seq_encoder is not None
-        s_lm = self.prot_seq_to_s_lm(prot_seq_encoder(f_input))
+    def encode_structure(
+        self, f_input: FoldingInput
+    ) -> tuple[torch.Tensor | None, dict[str, torch.Tensor]]:
+        """Encode apo candidates using the appropriate compiled training module."""
+        encoder = self._get_model_module(self.prot_struct_encoder)
+        if encoder is None:
+            return None, {}
+        features = {} if self.apo_repr_mix is not None else None
+        single = encoder(f_input, feature_taps=features)
+        return single, features if features is not None else {}
 
-        if rna_seq_encoder is not None:
-            s_lm = s_lm + self.rna_seq_to_s_lm(rna_seq_encoder(f_input))
-
-        if prot_struct_encoder is not None:
-            structure_single = prot_struct_encoder(f_input, feature_taps=feature_taps)
-            s_lm = s_lm + self.prot_struct_to_s_lm(structure_single)
-
-        return s_lm
+    @torch.no_grad()
+    def collect_apo_features(
+        self,
+        f_input: FoldingInput,
+        reference: torch.Tensor,
+        structure_features: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        """Collect apo evidence using the appropriate compiled training module."""
+        features = dict(structure_features)
+        apo_module = self._get_model_module(self.apo_module)
+        apo_module(f_input, feature_taps=features)
+        return fill_missing_apo_features(features, f_input, reference)
 
     def run_trunk(
         self,
         f_input: FoldingInput,
         num_recycles: int,
+        s_lm: torch.Tensor,
         grad_recurrence_steps: int = 0,
         *,
         feature_taps: dict | None = None,
@@ -179,6 +195,8 @@ class KFoldForTrain(KFold):
             The input features.
         num_recycles : int
             The number of recycling steps.
+        s_lm : torch.Tensor
+            Prepared LM single representation; this method never runs encoders.
         grad_recurrence_steps : int, optional
             Number of final recurrent trunk steps to track with autograd during
             training, by default 0.
@@ -219,8 +237,6 @@ class KFoldForTrain(KFold):
         token_mask = f_input.token.pad_mask
         pair_mask = token_mask[..., None] & token_mask[..., None, :]
 
-        # Extract LM representation
-        s_lm = self._encode_lm_single(f_input, feature_taps=feature_taps)
         z_lm = self.lm_to_pair(s_lm)
 
         # Main trunk iteration with Parcae recurrence
@@ -241,6 +257,37 @@ class KFoldForTrain(KFold):
         z = refine_stack(self.linear_refine(z), pair_mask)
 
         return s_inputs, s_lm, z
+
+    def _select_utility_rollout(
+        self, f_input: FoldingInput, z: torch.Tensor, apo_output: ApoOutput
+    ) -> tuple[FoldingInput, torch.Tensor, int]:
+        """Choose a frozen apo branch for the existing training mini-rollout.
+
+        Selection is random, independent of learned utility scores, and does not
+        advance the diffusion RNG. Index -1 keeps the normal mixed prediction.
+        """
+        fraction = self.apo_repr_mix_config.utility_rollout_fraction
+        if not self.training or fraction <= 0:
+            return f_input, z, -1
+        rollout = apo_output.rollout
+        if rollout is None:
+            raise ValueError("Utility rollout requires retained apo training branches")
+        available = rollout.valid.any(0).nonzero().flatten()
+        if not available.numel():
+            return f_input, z, -1
+
+        device = f_input.device
+        devices = (
+            [device.index if device.index is not None else torch.cuda.current_device()]
+            if device.type == "cuda"
+            else []
+        )
+        with torch.random.fork_rng(devices=devices):
+            if torch.rand((), device=device) >= fraction:
+                return f_input, z, -1
+            draw = torch.randint(available.numel(), (), device=device)
+            index = int(available[draw].item())
+        return rollout.inputs[index], rollout.pair[:, index], index
 
     def forward_train(
         self,
@@ -340,15 +387,29 @@ class KFoldForTrain(KFold):
         # Output dictionary
         dict_out: dict[str, dict[str, torch.Tensor]] = {}
 
-        s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles, grad_recurrence_steps)
+        encoded = self.encode_input(f_input)
+        s_inputs, s_lm, z = self.run_trunk(
+            f_input, num_recycles, encoded.lm_single, grad_recurrence_steps
+        )
         z = z.float()
         z_conf, lm_conf = z, s_lm
+        apo_context = None
+        self.last_apo_mix_assignments = None
         if self.apo_repr_mix is not None:
-            z, z_conf, lm_conf = mix_representations(
-                self, f_input, s_lm, z, num_recycles, training=self.training
+            apo_output = run_apo_joint(
+                self,
+                f_input,
+                encoded,
+                z,
+                num_recycles,
+                training=self.training,
             )
+            z = apo_output.structure_pair
+            z_conf = apo_output.confidence_pair
+            lm_conf = apo_output.confidence_single
+            apo_context = apo_output.context
+            self.last_apo_mix_assignments = apo_output.assignments
         apo_relation = getattr(self.apo_repr_mix, "confidence_relation", None)
-        apo_context = self.last_apo_mix_context if apo_relation is not None else None
 
         if train_trunk:
             # Distogram head
@@ -381,32 +442,10 @@ class KFoldForTrain(KFold):
             # Stop gradients to input features and trunk outputs.
             # Sample structures with diffusion mini-rollout.
             sample_input, sample_z = f_input, z
-            utility_branch = -1
             if apo_relation is not None:
-                # Observe a random fixed-base branch's generated quality without
-                # adding another mini-rollout.
-                # This samples a training target; it never routes by learned U.
-                available = apo_context["valid"].any(0).nonzero().flatten()
-                fraction = self.apo_repr_mix_config.utility_rollout_fraction
-                if self.training and available.numel() and fraction > 0:
-                    devices = (
-                        [
-                            device.index
-                            if device.index is not None
-                            else torch.cuda.current_device()
-                        ]
-                        if device.type == "cuda"
-                        else []
-                    )
-                    # Utility-target sampling must not advance the baseline
-                    # diffusion stream, including when disabled for identity QA.
-                    with torch.random.fork_rng(devices=devices):
-                        if torch.rand((), device=device) < fraction:
-                            draw = torch.randint(available.numel(), (), device=device)
-                            utility_branch = int(available[draw].item())
-                if utility_branch >= 0:
-                    sample_input = apo_context["branches"][utility_branch]
-                    sample_z = apo_context["branch_z"][:, utility_branch]
+                sample_input, sample_z, utility_branch = self._select_utility_rollout(
+                    f_input, z, apo_output
+                )
                 dict_out["apo_utility"] = {
                     "scores": self.apo_repr_mix.apo_selector(
                         f_input, apo_context, s_inputs
@@ -490,15 +529,27 @@ class KFoldForTrain(KFold):
             )
 
         # Trunk with recycling
-        s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles)
+        encoded = self.encode_input(f_input)
+        s_inputs, s_lm, z = self.run_trunk(f_input, num_recycles, encoded.lm_single)
         z = z.float()
         z_conf, lm_conf = z, s_lm
+        apo_context = None
+        self.last_apo_mix_assignments = None
         if self.apo_repr_mix is not None:
-            z, z_conf, lm_conf = mix_representations(
-                self, f_input, s_lm, z, num_recycles, training=self.training
+            apo_output = run_apo_joint(
+                self,
+                f_input,
+                encoded,
+                z,
+                num_recycles,
+                training=self.training,
             )
+            z = apo_output.structure_pair
+            z_conf = apo_output.confidence_pair
+            lm_conf = apo_output.confidence_single
+            apo_context = apo_output.context
+            self.last_apo_mix_assignments = apo_output.assignments
         apo_relation = getattr(self.apo_repr_mix, "confidence_relation", None)
-        apo_context = self.last_apo_mix_context if apo_relation is not None else None
 
         # Distogram head
         dict_out["distogram"] = self.distogram_head.forward_inference(f_input, z)

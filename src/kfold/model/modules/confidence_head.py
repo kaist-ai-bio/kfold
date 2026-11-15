@@ -21,6 +21,7 @@ import torch.nn.functional as F
 from kfold.data.types.model_input import FoldingInput
 from kfold.model.layers.folding.attention_pair_bias import SelfAttentionPairBias
 from kfold.model.layers.folding.transition import Transition
+from kfold.model.modules.apo_features import ApoContext
 from kfold.model.modules.tri_stack import TriangularBlock
 from kfold.model.primitives import LayerNorm, LinearNoBias
 from kfold.model.primitives.utils import add, gather_dim, get_context_dtype
@@ -313,7 +314,7 @@ class ConfidenceHead(torch.nn.Module):
         x_pred: torch.Tensor,
         *,
         apo_relation: torch.nn.Module | None = None,
-        apo_context: dict | None = None,
+        apo_context: ApoContext | None = None,
     ) -> dict[str, torch.Tensor]:
         """Forward pass of confidence head module.
 

@@ -9,6 +9,8 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
+from kfold.model.modules.apo_features import APO_SINGLE_CHANNELS, ApoContext, ApoEvidence
+
 
 def masked_apo_pool(values, logits, mask):
     """Local K-axis attention, with a zero-valued null reference available."""
@@ -32,7 +34,39 @@ def partner_mean(values, asym_id, pad_mask):
     return torch.bmm(weights, values) / denominator[..., None]
 
 
+@torch.no_grad()
+def candidate_geometry(f, context: ApoContext, x):
+    """Build distance features and contact weights shared by both confidence heads.
+
+    Apo distances are masked outside observed groups. Candidate distances describe
+    the complete predicted complex, including pairs from different chains.
+    """
+    distance = torch.cdist(x.float(), x.float())
+    apo_distance = context["apo_distance"].float()
+    observed = context["apo_distance_mask"]
+    same_chain = f.token.asym_id[:, :, None] == f.token.asym_id[:, None, :]
+    candidate_distance = distance[:, None].expand_as(apo_distance)
+    geometry = torch.stack(
+        (
+            candidate_distance.clamp_max(50) / 50,
+            torch.exp(-(candidate_distance / 8).square()),
+            apo_distance.clamp_max(50) / 50 * observed,
+            ((candidate_distance - apo_distance).clamp(-30, 30) / 30) * observed,
+            observed.to(candidate_distance.dtype),
+            (~same_chain[:, None])
+            .expand_as(candidate_distance)
+            .to(candidate_distance.dtype),
+        ),
+        -1,
+    )
+    # Both contacting and distant pairs remain visible to the relation.
+    contact = 0.05 + 0.95 * torch.sigmoid((12 - distance) / 2)
+    return geometry, contact
+
+
 class PreApoProjection(nn.Module):
+    """Combine observed apo features with the complete complex's input features."""
+
     def __init__(self, single_channels, input_channels, hidden, pair_channels=64):
         super().__init__()
         self.single = nn.Sequential(
@@ -47,7 +81,7 @@ class PreApoProjection(nn.Module):
         self.partner = nn.Linear(hidden, hidden, bias=False)
         self.norm = nn.LayerNorm(hidden)
 
-    def forward(self, f, context, s_inputs):
+    def forward(self, f, context: ApoEvidence, s_inputs):
         mask = context["apo_single_mask"]
         raw = context["apo_single"].detach().masked_fill(~mask[..., None], 0)
         apo = self.single(raw) * mask[..., None]
@@ -117,7 +151,7 @@ class CandidateRelationBranch(nn.Module):
         hidden,
         depth,
         chunk_size,
-        single_channels=2560,
+        single_channels=APO_SINGLE_CHANNELS,
         pair_channels=64,
     ):
         super().__init__()
@@ -142,30 +176,14 @@ class CandidateRelationBranch(nn.Module):
         nn.init.zeros_(self.out.weight)
         nn.init.zeros_(self.out.bias)
 
-    def forward(self, f, context, z, s_inputs, x, *, pair_output):
+    def forward(
+        self, f, context: ApoContext, z, s_inputs, geometry, contact, *, pair_output
+    ):
+        """Update candidate-conditioned apo representations and pool across apos."""
         token, token_mask = self.pre_apo(f, context, s_inputs)
         pair_mask = token_mask[..., :, None] & token_mask[..., None, :]
         observed = context["apo_pair_mask"]
         raw_pair = context["apo_pair"].detach().masked_fill(~observed[..., None], 0)
-        with torch.no_grad():
-            distance = torch.cdist(x.float(), x.float())
-            apo_distance = context["apo_distance"].float()
-            geom_mask = context["apo_distance_mask"]
-            intra = (f.token.asym_id[:, :, None] == f.token.asym_id[:, None, :])[:, None]
-            d = distance[:, None].expand_as(apo_distance)
-            geometry = torch.stack(
-                (
-                    d.clamp_max(50) / 50,
-                    torch.exp(-(d / 8).square()),
-                    apo_distance.clamp_max(50) / 50 * geom_mask,
-                    ((d - apo_distance).clamp(-30, 30) / 30) * geom_mask,
-                    geom_mask.to(d.dtype),
-                    (~intra).expand_as(d).to(d.dtype),
-                ),
-                -1,
-            )
-            # Both contacting and distant pairs remain visible to the relation.
-            contact = 0.05 + 0.95 * torch.sigmoid((12 - distance) / 2)
         pair = self.pair_apo(raw_pair) * observed[..., None]
         pair = (
             pair
@@ -192,12 +210,18 @@ class CandidateRelationBranch(nn.Module):
             else:
                 pair, token = block(pair, token, contact, pair_mask, token_mask)
         if pair_output:
-            pair = (
-                pair + self.left(token)[:, :, :, None] + self.right(token)[:, :, None, :]
-            )
-            pooled = masked_apo_pool(pair, self.score(pair).squeeze(-1), pair_mask)
-            # Output bias must not update positions without usable apo evidence.
-            return self.out(pooled) * pair_mask.any(1)[..., None]
+            return self._pool_pair(pair, token, pair_mask)
+        return self._pool_single(pair, token, pair_mask, token_mask)
+
+    def _pool_pair(self, pair, token, pair_mask):
+        """Read token updates into pairs and pool over valid apo combinations."""
+        pair = pair + self.left(token)[:, :, :, None] + self.right(token)[:, :, None, :]
+        pooled = masked_apo_pool(pair, self.score(pair).squeeze(-1), pair_mask)
+        # Output bias must not update positions without usable apo evidence.
+        return self.out(pooled) * pair_mask.any(1)[..., None]
+
+    def _pool_single(self, pair, token, pair_mask, token_mask):
+        """Read the final pair update into tokens and pool over apo combinations."""
         # Read the final pair update back into single features as well. This
         # keeps every deep relation block supervised in the single-only branch.
         summary = pair.sum(-2) / pair_mask.sum(-1).clamp_min(1)[..., None]
@@ -211,8 +235,15 @@ class CandidateRelationBranch(nn.Module):
 
 
 class ApoCandidateRelation(nn.Module):
+    """Independent pair and single adapters using the same candidate geometry."""
+
     def __init__(
-        self, channel_z, channel_s, config, single_channels=2560, pair_channels=64
+        self,
+        channel_z,
+        channel_s,
+        config,
+        single_channels=APO_SINGLE_CHANNELS,
+        pair_channels=64,
     ):
         super().__init__()
         args = (
@@ -227,11 +258,16 @@ class ApoCandidateRelation(nn.Module):
         self.confidence_z = CandidateRelationBranch(channel_z, *args)
         self.confidence_s = CandidateRelationBranch(channel_s, *args)
 
-    def forward(self, f_input, context, z, s_inputs, x_repr):
+    def forward(self, f_input, context: ApoContext, z, s_inputs, x_repr):
+        geometry, contact = candidate_geometry(f_input, context, x_repr)
         # These branches intentionally share no trainable parameters.
         return (
-            self.confidence_z(f_input, context, z, s_inputs, x_repr, pair_output=True),
-            self.confidence_s(f_input, context, z, s_inputs, x_repr, pair_output=False),
+            self.confidence_z(
+                f_input, context, z, s_inputs, geometry, contact, pair_output=True
+            ),
+            self.confidence_s(
+                f_input, context, z, s_inputs, geometry, contact, pair_output=False
+            ),
         )
 
 
@@ -242,7 +278,9 @@ class ApoUtilityHead(nn.Module):
     complete apo combination, not an identified contribution of each molecule.
     """
 
-    def __init__(self, channel_s, hidden, single_channels=2560, pair_channels=64):
+    def __init__(
+        self, channel_s, hidden, single_channels=APO_SINGLE_CHANNELS, pair_channels=64
+    ):
         super().__init__()
         self.pre_apo = PreApoProjection(single_channels, channel_s, hidden, pair_channels)
         self.score = nn.Sequential(
@@ -252,7 +290,7 @@ class ApoUtilityHead(nn.Module):
             nn.Linear(hidden, 1),
         )
 
-    def forward(self, f_input, context, s_inputs):
+    def forward(self, f_input, context: ApoEvidence, s_inputs):
         # Raw producers are frozen; this utility-specific adapter is learned only
         # by utility supervision and cannot modify confidence/generation layers.
         token, mask = self.pre_apo(f_input, context, s_inputs.detach())
