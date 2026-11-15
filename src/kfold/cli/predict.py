@@ -219,7 +219,7 @@ def _download_models(model_path: str, cache_dir: Path | None) -> None:
         try:
             snapshot_download(
                 repo_id,
-                revision="apo-joint" if repo_id == "kaist-ai-bio/kfold" else None,
+                revision="v1.1" if repo_id == "kaist-ai-bio/kfold" else None,
                 cache_dir=cache_dir,
                 tqdm_class=DownloadProgress,
             )
