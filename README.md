@@ -16,7 +16,7 @@ For these challenging biomolecular systems, K-Fold with [AtlasFold](https://gith
 ## Model parameters
 
 K-Fold uses pretrained [AtlasLM](https://github.com/SeonghwanSeo/atlasfold) for protein sequence representations and [TriProRep](https://github.com/hsjang0/TriProRep) for protein structure representations.
-The parameters for these models and K-Fold are downloaded automatically on first use from [Hugging Face](https://huggingface.co/collections/kaist-ai-bio/kfold).
+The parameters for these models and K-Fold are downloaded automatically on first use from [Hugging Face](https://huggingface.co/kaist-ai-bio/kfold).
 
 > [!NOTE]
 > K-Fold v1.1.0 introduced updated model weights.
