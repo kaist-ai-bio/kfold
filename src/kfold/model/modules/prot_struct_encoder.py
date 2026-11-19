@@ -258,7 +258,9 @@ class StructureEncoder(torch.nn.Module):
             "fa_token_id": fa_tok_ids,
         }
 
-    def forward(self, f_input: FoldingInput) -> torch.Tensor:
+    def forward(
+        self, f_input: FoldingInput, *, feature_taps: dict | None = None
+    ) -> torch.Tensor:
         """Forward pass of sequence representation module.
 
         Parameters
@@ -279,9 +281,11 @@ class StructureEncoder(torch.nn.Module):
             if device_type == "cuda"
             else contextlib.nullcontext(),
         ):
-            return self._forward(f_input)
+            return self._forward(f_input, feature_taps=feature_taps)
 
-    def _forward(self, f_input: FoldingInput) -> torch.Tensor:
+    def _forward(
+        self, f_input: FoldingInput, *, feature_taps: dict | None = None
+    ) -> torch.Tensor:
         """Forward pass of sequence representation module.
 
         Parameters
@@ -300,6 +304,27 @@ class StructureEncoder(torch.nn.Module):
         bb_token_ids = f_input.sequence.bb_struct_token_id  # [B, L, Napo]
         fa_token_ids = f_input.sequence.fa_struct_token_id  # [B, L, Napo]
         batch_size, seq_len, num_apo = bb_token_ids.shape
+        if num_apo == 0:
+            num_tokens = f_input.token.pad_mask.shape[-1]
+            x = torch.zeros(
+                batch_size,
+                num_tokens,
+                self.d_model,
+                device=seq_token_ids.device,
+                dtype=torch.float32,
+            )
+            if feature_taps is not None:
+                feature_taps["apo_single"] = x.new_zeros(
+                    batch_size, 0, num_tokens, self.d_model
+                ).detach()
+                feature_taps["apo_single_mask"] = torch.zeros(
+                    batch_size,
+                    0,
+                    num_tokens,
+                    device=seq_token_ids.device,
+                    dtype=torch.bool,
+                )
+            return x
 
         # HACK: (Seonghwan) Since we use the shared sequence vocab for both sequence
         # and structure encoder, structure encoder does not have vocab ids for
@@ -337,6 +362,21 @@ class StructureEncoder(torch.nn.Module):
         x = x * allow_mask[..., None]  # mask out invalid tokens
         x = x.reshape(batch_size, num_apo, seq_len, -1)
         allow_mask = allow_mask.reshape(batch_size, num_apo, seq_len)
+        if feature_taps is not None:
+            # Keep the apo axis before averaging and map each slot to model tokens.
+            # A negative sequence index is padding, never the final sequence token.
+            token_index = f_input.token.seq_token_index
+            safe_index = token_index.clamp(min=0)
+            token_valid = (
+                f_input.token.pad_mask & f_input.token.is_protein & (token_index >= 0)
+            )
+            gather_index = safe_index[:, None, :].expand(-1, num_apo, -1)
+            token_allow = allow_mask.gather(2, gather_index) & token_valid[:, None]
+            token_x = x.gather(2, gather_index[..., None].expand(-1, -1, -1, x.shape[-1]))
+            feature_taps["apo_single"] = token_x.masked_fill(
+                ~token_allow[..., None], 0
+            ).detach()
+            feature_taps["apo_single_mask"] = token_allow.detach()
         num_valid = allow_mask.sum(dim=1).clamp(min=1)
         x = x.sum(dim=1) / num_valid[..., None]
 

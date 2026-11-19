@@ -82,6 +82,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "(1–5; default: 5).",
     )
     parser.add_argument(
+        "--max-apo-combinations",
+        type=int,
+        default=3,
+        help="Maximum complex apo combinations for a representation-mixing (default: 3).",
+    )
+    parser.add_argument(
         "--num-samples",
         type=int,
         default=5,
@@ -94,12 +100,22 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         help="Number of recycling iterations (default: 10).",
     )
     parser.add_argument(
+        "--enable-apo-adapter",
+        action="store_true",
+        help="Run additional apo trunks and mix their representations.",
+    )
+    parser.add_argument(
         "--num-steps",
         type=int,
         default=100,
         help="Number of diffusion steps (default: 100).",
     )
-    # Devices, model components, and model cache.
+    # Model selection, devices, components, and cache.
+    parser.add_argument(
+        "--model-path",
+        default="kaist-ai-bio/kfold",
+        help="Model ID or local directory.",
+    )
     parser.add_argument(
         "--kernel",
         dest="kernel_backend",
@@ -174,8 +190,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _download_models(cache_dir: Path | None) -> None:
-    """Cache all model weights and assets."""
+def _download_models(model_path: str, cache_dir: Path | None) -> None:
+    """Cache external assets and the selected model when it is a Hub repository."""
     from huggingface_hub import snapshot_download
     from huggingface_hub.utils import tqdm
 
@@ -191,13 +207,15 @@ def _download_models(cache_dir: Path | None) -> None:
     if cache_dir is not None:
         logger.info("Cache directory: %s", cache_dir.resolve())
 
-    for repo_id in (
+    repo_ids = [
         "SeonghwanSeo/atlaslm-3b-base",
         "SeonghwanSeo/atlasfold-260703",
         "SeonghwanSeo/atlasfold-m-260725",
         "kaist-ai-bio/kfold-assets",
-        "kaist-ai-bio/kfold",
-    ):
+    ]
+    if not Path(model_path).is_dir():
+        repo_ids.append(model_path)
+    for repo_id in repo_ids:
         try:
             snapshot_download(
                 repo_id,
@@ -232,6 +250,8 @@ def _load_queries(args: argparse.Namespace) -> list[Query]:
     for name in ("num_apos", "num_shared_apos"):
         if not 1 <= getattr(args, name) <= 5:
             raise ValueError(f"--{name.replace('_', '-')} must be between 1 and 5.")
+    if args.max_apo_combinations is not None and args.max_apo_combinations < 1:
+        raise ValueError("--max-apo-combinations must be positive")
     for name in ("num_samples", "num_recycles", "num_steps"):
         if getattr(args, name) < 1:
             raise ValueError(f"--{name.replace('_', '-')} must be positive.")
@@ -303,7 +323,7 @@ def run(args: argparse.Namespace) -> None:
         )
 
     # Populate the shared cache before any GPU worker loads a model.
-    _download_models(args.cache_dir)
+    _download_models(args.model_path, args.cache_dir)
 
     input_path = args.input.resolve()
     output_path = args.out_dir.resolve()

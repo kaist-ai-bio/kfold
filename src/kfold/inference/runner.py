@@ -392,6 +392,8 @@ class KFoldRunner:
         num_samples: int = 5,
         num_recycles: int = 10,
         num_steps: int = 100,
+        max_apo_combinations: int | None = None,
+        apo_adapter: bool = False,
         return_embeddings: bool = False,
         return_trajectory: bool = False,
         return_distogram: bool = False,
@@ -415,6 +417,8 @@ class KFoldRunner:
             Number of model recycling iterations.
         num_steps : int
             Number of diffusion sampling steps.
+        apo_adapter : bool
+            Run additional apo trunks and mix their representations.
         return_embeddings : bool
             Include shared single and pair embeddings.
         return_trajectory : bool
@@ -482,6 +486,8 @@ class KFoldRunner:
             num_samples=num_samples,
             num_recycles=num_recycles,
             num_steps=num_steps,
+            max_apo_combinations=max_apo_combinations,
+            apo_adapter=apo_adapter,
             return_embeddings=return_embeddings,
             return_trajectory=return_trajectory,
             return_distogram=return_distogram,
@@ -504,6 +510,8 @@ class KFoldRunner:
         num_samples: int = 5,
         num_recycles: int = 10,
         num_steps: int = 100,
+        max_apo_combinations: int | None = None,
+        apo_adapter: bool = False,
         return_embeddings: bool = False,
         return_distogram: bool = False,
         return_trajectory: bool = False,
@@ -524,6 +532,8 @@ class KFoldRunner:
             Number of model recycling iterations.
         num_steps : int
             Number of diffusion sampling steps.
+        apo_adapter : bool
+            Run additional apo trunks and mix their representations.
         return_embeddings : bool
             Include shared single and pair embeddings.
         return_distogram : bool
@@ -574,6 +584,8 @@ class KFoldRunner:
                 num_recycles=num_recycles,
                 num_steps=num_steps,
                 num_samples=num_samples,
+                max_apo_combinations=max_apo_combinations,
+                apo_adapter=apo_adapter,
                 return_embeddings=return_embeddings,
                 return_distogram=return_distogram,
                 return_traj=return_trajectory,
@@ -627,6 +639,12 @@ class KFoldRunner:
                 "seed": seed,
                 "num_samples": num_samples,
                 "num_recycles": num_recycles,
+                "max_apo_combinations": max_apo_combinations,
+                "apo_adapter": apo_adapter,
+                "apo_trunk_recycles": 2,
+                "apo_mix_assignments": getattr(
+                    self.model, "last_apo_mix_assignments", None
+                ),
                 "num_steps": num_steps,
                 "use_struct_encoder": self.model.prot_struct_encoder is not None,
                 "use_rna_encoder": self.model.rna_seq_encoder is not None,
