@@ -1,16 +1,26 @@
 # K-Fold
 
+**Preprint:** [Predicting conformational changes induced by biomolecular interactions](https://doi.org/10.64898/2026.10.26.760299) (bioRxiv, 2026).
+
 K-Fold is a biomolecular foundation model that predicts binding-induced conformational changes.
 Through an apo-to-holo diffusion bridge, it models how unbound molecules assemble and change shape upon binding, including GPCR and kinase systems.
 
-![K-Fold assembles unbound component structures into a bound complex.](docs/images/figure_1.jpg)
+![K-Fold assembles unbound component structures into a bound complex.](docs/images/overview.png)
 
-**Preprint:** [Predicting conformational changes induced by biomolecular interactions](https://doi.org/10.64898/2026.10.26.760299) (bioRxiv, 2026).
+K-Fold is designed to predict how unbound components interact and assemble into a complex.
+The model excels at predicting interactions central to emerging therapeutic modalities, particularly in antibody–antigen (Ab–Ag) and molecular-glue degrader (MGD) systems.
+For these challenging biomolecular systems, K-Fold with [AtlasFold](https://github.com/SeonghwanSeo/atlasfold) outperforms conventional co-folding models without MSA.
+
+![Success rates for antibody–antigen interfaces and molecular-glue degrader complexes across models.](docs/images/comparison.png)
 
 ## Model parameters
 
 K-Fold uses pretrained [AtlasLM](https://github.com/SeonghwanSeo/atlasfold) for protein sequence representations and [TriProRep](https://github.com/hsjang0/TriProRep) for protein structure representations.
-The parameters for these models and K-Fold are downloaded automatically on first use from [Hugging Face](https://huggingface.co/collections/kaist-ai-bio/k-fold).
+The parameters for these models and K-Fold are downloaded automatically on first use from [Hugging Face](https://huggingface.co/collections/kaist-ai-bio/kfold).
+
+> [!NOTE]
+> K-Fold v1.1.0 introduced updated model weights.
+> If you are using an earlier version of K-Fold, change the Hugging Face repository ID in your code from `kaist-ai-bio/kfold` to `SeonghwanSeo/kfold`.
 
 ## Installation
 
