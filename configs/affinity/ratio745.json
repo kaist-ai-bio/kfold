@@ -1,0 +1,66 @@
+{
+  "seed": 20260822,
+  "variant": "colleague_cross",
+  "sampling_mode": "boltz2_aggregate_255_745_v1",
+  "data": {
+    "manifest": "data/labels.sqlite",
+    "catalog": "data/catalog.sqlite",
+    "view": "query_200",
+    "availability_sha256": "394df06a90d808625eee80b532ea0aec4a83a7abfbcc045f5a094f5463220f43"
+  },
+  "sampler_state": "data/sampler-state.pkl",
+  "sampler_summary": "data/sampler-summary.json",
+  "model": {
+    "channel_s": 384,
+    "channel_z": 256,
+    "blocks": 6,
+    "heads": 16,
+    "dropout": 0.1,
+    "outer_rank": 16,
+    "kernel_backend": "torch"
+  },
+  "optimizer": {
+    "lr": 0.0001,
+    "weight_decay": 0.001
+  },
+  "loss": {
+    "delta": 0.5,
+    "gamma": 1.0,
+    "alpha": 0.8
+  },
+  "sampling": {
+    "continuous_probability": 0.255,
+    "binary_probability": 0.745,
+    "complete_assay_group_size": 5,
+    "physical_batch_per_rank": 16,
+    "global_batch": 1024,
+    "continuous_group_to_absolute_only_exposure": "10:1 up to integer packing",
+    "binary_provenance_ratio": "measured_positive:measured_negative:synthetic_negative=1:2:2",
+    "loss_normalization_unchanged": true
+  },
+  "gradient_clip": 10.0,
+  "max_steps": 10000,
+  "checkpoint_every": 500,
+  "validate_every": 1000,
+  "validation_batch_size": 32,
+  "validation_per_stratum": 1024,
+  "validation_seed": 20261109,
+  "log_every": 10,
+  "num_workers": 2,
+  "pilot_steps": 4,
+  "distributed": {
+    "world_size": 64,
+    "nodes": 16,
+    "ranks_per_node": 4,
+    "batch_per_rank": 16,
+    "gradient_accumulation": 1,
+    "global_batch": 1024
+  },
+  "wandb": {
+    "enabled": true,
+    "entity": "",
+    "project": "",
+    "group": "ratio745",
+    "run_ids": {"joint": ""}
+  }
+}

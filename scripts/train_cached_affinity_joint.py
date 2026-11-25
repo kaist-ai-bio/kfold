@@ -79,6 +79,7 @@ def main():
     val={task:CachedLabelDataset(data['manifest'],data['catalog'],task=task,split='validation')
          for task in ('regression','classification')}
     target=c['pilot_steps'] if a.pilot else c['max_steps'];samplers={}
+    ratio_mode=c.get('sampling_mode')=='boltz2_aggregate_255_745_v1'
     for task in ('regression','classification'):
         sampler=TaskBatchSampler.__new__(TaskBatchSampler)
         sampler.__dict__.update(sample_state[task]);sampler.dataset=train[task]
@@ -86,11 +87,18 @@ def main():
         if task=='regression':
             sampler.groups=2;sampler.group_size=5;sampler.singletons=1;sampler.batch_size=11
         else:
-            sampler=BinaryFiveSampler(sampler.class_pools,batches=target,seed=sampler.seed)
+            binary_pools=sampler.class_pools
+            sampler=BinaryFiveSampler(binary_pools,batches=target*(3 if ratio_mode else 1),seed=sampler.seed)
         samplers[task]=sampler
     joint=JointDataset(train['regression'],train['classification'],sample_state['bound_rows'])
-    sampler=JointBatchSampler(samplers['regression'],samplers['classification'],start=start,
-        bound_count=len(sample_state['bound_rows']),seed=rank_seed(c['seed'],rank))
+    if ratio_mode:
+        from kfold.affinity.ratio_sampling import RatioJointBatchSampler
+        sampler=RatioJointBatchSampler(samplers['regression'],samplers['classification'],binary_pools,
+            rank=rank,world_size=world,layout_seed=c['seed'],seed=rank_seed(c['seed'],rank),
+            start=start,bound_count=len(sample_state['bound_rows']))
+    else:
+        sampler=JointBatchSampler(samplers['regression'],samplers['classification'],start=start,
+            bound_count=len(sample_state['bound_rows']),seed=rank_seed(c['seed'],rank))
     loader=DataLoader(joint,batch_sampler=sampler,collate_fn=partial(collate_joint,pad_to=256 if a.pilot else None),
         num_workers=c['num_workers'],persistent_workers=bool(c['num_workers']),pin_memory=True,
         multiprocessing_context='spawn' if c['num_workers'] else None,worker_init_fn=initialize_worker,
@@ -222,7 +230,8 @@ def main():
     if a.pilot:
         assert len({s['parameter_sha256'] for s in states})==1
         expected=['binary_head','shared','value_head']
-        if bare.shared.proddiff is not None:expected.extend(['proddiff','proddiff_norm','proddiff_projection'])
+        if bare.shared.proddiff is not None and hc.variant!='full_pair_proddiff_control':
+            expected.extend(['proddiff','proddiff_norm','proddiff_projection'])
         if not a.resume:assert all(s['nonzero_gradient_modules']==sorted(expected) for s in states)
     if rank==0:
         save(out/'completion.json',dict(passed=True,epoch=time.time(),task='joint',updates=updates,

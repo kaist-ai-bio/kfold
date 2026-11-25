@@ -69,6 +69,24 @@ def test_joint_both_outputs_reach_proddiff_adapter():
     assert a.abs().sum()>0 and b.abs().sum()>0
 
 
+def test_null_control_retains_topology_capacity_and_zero_extra_information_after_updates():
+    torch.manual_seed(12)
+    h=JointAffinityHead(HeadConfig(variant='full_pair_proddiff_control',channel_s=16,
+        channel_z=16,blocks=1,heads=4,dropout=0.))
+    assert not h.shared.base.config.cross_pair_only
+    x=features();opt=torch.optim.AdamW(h.parameters(),lr=.01,weight_decay=.001)
+    for _ in range(4):
+        opt.zero_grad();out=h(**x)
+        ((out['value']-1).square().mean()+torch.nn.functional.binary_cross_entropy_with_logits(
+            out['logits'],torch.ones_like(out['logits']))).backward();opt.step()
+    assert h.shared.proddiff.output.weight.eq(0).all()
+    assert h.shared.proddiff.norm.bias.eq(0).all()
+    residual=h.shared.proddiff(x['s_lm']*0,x['protein_mask'])
+    assert residual.eq(0).all()
+    assert h.value_head[-1].weight.grad.abs().sum()>0
+    assert h.binary_head[-1].weight.grad.abs().sum()>0
+
+
 @pytest.mark.parametrize('variant',['slm_proddiff','full_pair_proddiff_control'])
 def test_padding_and_entity_masks_preserve_proddiff_predictions(variant):
     from kfold.affinity.training_data import collate_cached
