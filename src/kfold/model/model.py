@@ -22,7 +22,7 @@ from typing import Self
 
 import torch
 import torch.nn.functional as F
-from omegaconf import OmegaConf
+from omegaconf import DictConfig, OmegaConf
 
 from kfold.data.types.model_input import FoldingInput
 from kfold.model.modules import (
@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 MODEL_REPO_ID = "kaist-ai-bio/kfold"
+AFFINITY_BUNDLE_FORMAT = "kfold-affinity-inference-v1"
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -684,8 +685,9 @@ class KFold(torch.nn.Module):
         Parameters
         ----------
         pretrained_model_name_or_path : str or pathlib.Path
-            The name of the pretrained model or the path to a local directory containing
-            the model weights and configuration.
+            The Hub model ID, a local model directory, or a combined K-Fold and
+            affinity checkpoint. The combined checkpoint contains the backbone
+            weights and configuration used for structure inference.
         device : str or torch.device, optional
             The device to load the model onto. Default is "cuda".
         cache_dir : str or pathlib.Path, optional
@@ -707,23 +709,61 @@ class KFold(torch.nn.Module):
         """
         from huggingface_hub import snapshot_download
 
-        if pathlib.Path(pretrained_model_name_or_path).is_dir():
-            local_path = pathlib.Path(pretrained_model_name_or_path)
-            model_path = local_path / "weights/kfold.pth"
-            config_path = local_path / "config.yaml"
-        else:
-            repo_id = str(pretrained_model_name_or_path)
-            repo_path = pathlib.Path(
-                snapshot_download(
-                    repo_id,
-                    repo_type="model",
-                    cache_dir=cache_dir,
-                )
+        local_path = pathlib.Path(pretrained_model_name_or_path)
+        if local_path.is_file():
+            bundle = torch.load(
+                local_path, map_location="cpu", weights_only=True, mmap=True
             )
-            model_path = repo_path / "weights/kfold.pth"
-            config_path = repo_path / "config.yaml"
+            if (
+                not isinstance(bundle, dict)
+                or bundle.get("format") != AFFINITY_BUNDLE_FORMAT
+            ):
+                raise ValueError("Expected a combined K-Fold affinity checkpoint file.")
+            state_dict = bundle["backbone"]["model"]
+            config = bundle["backbone"]["config_yaml"]
+        else:
+            if not local_path.is_dir():
+                local_path = pathlib.Path(
+                    snapshot_download(
+                        str(pretrained_model_name_or_path),
+                        repo_type="model",
+                        cache_dir=cache_dir,
+                    )
+                )
+            config = OmegaConf.load(local_path / "config.yaml")
+            state_dict = torch.load(
+                local_path / "weights/kfold.pth",
+                map_location="cpu",
+                weights_only=True,
+                mmap=True,
+            )
 
-        config = OmegaConf.load(config_path)
+        return cls.from_weights(
+            state_dict,
+            config,
+            device=device,
+            cache_dir=cache_dir,
+            use_struct_encoder=use_struct_encoder,
+            use_rna_encoder=use_rna_encoder,
+            cpu_offload=cpu_offload,
+            kernel_backend=kernel_backend,
+        )
+
+    @classmethod
+    def from_weights(
+        cls,
+        state_dict: Mapping[str, torch.Tensor],
+        config: DictConfig | str,
+        *,
+        device: str | torch.device = "cuda",
+        cache_dir: str | pathlib.Path | None = None,
+        use_struct_encoder: bool = True,
+        use_rna_encoder: bool = True,
+        cpu_offload: bool = False,
+        kernel_backend: str = "auto",
+    ) -> Self:
+        """Initialize K-Fold from loaded weights and its standalone configuration."""
+        config = OmegaConf.create(config)
         if not use_struct_encoder:
             config.protein_structure_encoder = None
         if not use_rna_encoder:
@@ -739,11 +779,7 @@ class KFold(torch.nn.Module):
                     config[encoder].cache_dir = str(cache_dir)
 
         model = cls(config, kernel_backend=kernel_backend)
-        state_dict = torch.load(
-            model_path, map_location="cpu", weights_only=True, mmap=True
-        )
         model.load_state_dict(state_dict)
-        del state_dict
 
         model.requires_grad_(False).eval()
         model.cpu_offload = cpu_offload

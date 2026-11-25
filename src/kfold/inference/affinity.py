@@ -23,6 +23,7 @@ from torch import Tensor
 from kfold.constants import ChainType
 from kfold.data.types.model_input import FoldingInput
 from kfold.model import KFold
+from kfold.model.model import AFFINITY_BUNDLE_FORMAT
 from kfold.model.modules.affinity_pairformer import JointAffinityHead
 
 
@@ -31,8 +32,16 @@ def load_affinity_head(
 ) -> JointAffinityHead:
     """Load the cross-only joint head and verify all parameter keys and shapes."""
     state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    return _affinity_head_from_state(state, device)
+
+
+def _affinity_head_from_state(
+    state: dict, device: torch.device | str
+) -> JointAffinityHead:
     if not isinstance(state, dict):
         raise ValueError("Expected a saved joint affinity checkpoint.")
+    if state.get("format") == AFFINITY_BUNDLE_FORMAT:
+        state = state["affinity"]
     config = state.get("config", {})
     if state.get("task") != "joint" or config.get("variant") != "colleague_cross":
         raise ValueError("Expected a joint colleague_cross affinity checkpoint.")
@@ -45,6 +54,38 @@ def load_affinity_head(
     )
     head.load_state_dict(state["model"], strict=True)
     return head.requires_grad_(False).eval().to(device)
+
+
+def load_affinity_models(
+    checkpoint: str | Path,
+    model_path: str | Path,
+    *,
+    device: torch.device,
+    cache_dir: str | Path | None,
+    use_rna_encoder: bool,
+    cpu_offload: bool,
+    kernel_backend: str,
+) -> tuple[KFold, JointAffinityHead, str]:
+    """Resolve the backbone and affinity head for a CLI inference run."""
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True, mmap=True)
+    head = _affinity_head_from_state(state, device)
+    model_options = {
+        "device": device,
+        "cache_dir": cache_dir,
+        "use_rna_encoder": use_rna_encoder,
+        "cpu_offload": cpu_offload,
+        "kernel_backend": kernel_backend,
+    }
+    if state.get("format") == AFFINITY_BUNDLE_FORMAT:
+        backbone = state["backbone"]
+        model = KFold.from_weights(
+            backbone["model"], backbone["config_yaml"], **model_options
+        )
+        reference = backbone["reference"]
+    else:
+        model = KFold.from_pretrained(model_path, **model_options)
+        reference = str(model_path)
+    return model, head, reference
 
 
 def _feature_precision(tensor: Tensor) -> Tensor:

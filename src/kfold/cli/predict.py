@@ -35,7 +35,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--affinity-checkpoint",
         type=Path,
-        help="Joint affinity head checkpoint for --stage affinity.",
+        help="Joint head or bundled backbone and head for --stage affinity.",
     )
     parser.add_argument(
         "-i",
@@ -118,7 +118,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--model-path",
         default="kaist-ai-bio/kfold",
-        help="Model ID or local directory.",
+        help="Model ID, local directory, or combined K-Fold checkpoint.",
     )
     parser.add_argument(
         "--kernel",
@@ -217,7 +217,7 @@ def _download_models(model_path: str, cache_dir: Path | None) -> None:
         "SeonghwanSeo/atlasfold-m-260725",
         "kaist-ai-bio/kfold-assets",
     ]
-    if not Path(model_path).is_dir():
+    if not Path(model_path).exists():
         repo_ids.append(model_path)
     for repo_id in repo_ids:
         try:

@@ -26,10 +26,9 @@ import torch
 
 from kfold.cli.multigpu import distribute, launch
 from kfold.cli.predict_complex import _load_prepared_query
-from kfold.inference.affinity import load_affinity_head, predict_affinity
+from kfold.inference.affinity import load_affinity_models, predict_affinity
 from kfold.inference.query import LigandSequence, ProteinSequence, Query
 from kfold.inference.runner import KFoldRunner
-from kfold.model import KFold
 
 logger = logging.getLogger("affinity")
 
@@ -110,8 +109,8 @@ def _worker(
     gpu_id: int, args: argparse.Namespace, jobs: list[tuple[Query, int, Path]]
 ) -> None:
     device = torch.device("cuda", gpu_id)
-    head = load_affinity_head(args.affinity_checkpoint, device)
-    model = KFold.from_pretrained(
+    model, head, model_reference = load_affinity_models(
+        args.affinity_checkpoint,
         args.model_path,
         device=device,
         cache_dir=args.cache_dir,
@@ -138,7 +137,7 @@ def _worker(
             "query": query.name,
             "seed": seed,
             "num_recycles": args.num_recycles,
-            "model_path": args.model_path,
+            "model_path": model_reference,
             "affinity_checkpoint_sha256": args.affinity_checkpoint_sha256,
             **scores,
         }
