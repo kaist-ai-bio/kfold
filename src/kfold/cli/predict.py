@@ -28,9 +28,14 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     # Stage selection, query paths, and generation seeds.
     parser.add_argument(
         "--stage",
-        choices=("all", "apo", "complex"),
+        choices=("all", "apo", "complex", "affinity"),
         default="all",
-        help="Run all stages, prepare apos, or predict complexes from --out-dir.",
+        help="Select structure workflow, apo preparation, complex, or affinity.",
+    )
+    parser.add_argument(
+        "--affinity-checkpoint",
+        type=Path,
+        help="Joint affinity head checkpoint for --stage affinity.",
     )
     parser.add_argument(
         "-i",
@@ -96,8 +101,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--num-recycles",
         type=int,
-        default=10,
-        help="Number of recycling iterations (default: 10).",
+        help="Recycling iterations (default: 10 for structure, 3 for affinity).",
     )
     parser.add_argument(
         "--enable-apo-adapter",
@@ -252,9 +256,20 @@ def _load_queries(args: argparse.Namespace) -> list[Query]:
             raise ValueError(f"--{name.replace('_', '-')} must be between 1 and 5.")
     if args.max_apo_combinations is not None and args.max_apo_combinations < 1:
         raise ValueError("--max-apo-combinations must be positive")
+    if args.num_recycles is None:
+        args.num_recycles = 3 if args.stage == "affinity" else 10
     for name in ("num_samples", "num_recycles", "num_steps"):
         if getattr(args, name) < 1:
             raise ValueError(f"--{name.replace('_', '-')} must be positive.")
+    if args.stage == "affinity":
+        if args.affinity_checkpoint is None or not args.affinity_checkpoint.is_file():
+            raise ValueError(
+                "--stage affinity requires an existing --affinity-checkpoint."
+            )
+        if args.enable_apo_adapter or args.disable_struct_encoder:
+            raise ValueError(
+                "Affinity requires the apo encoder and a single, unmixed trunk."
+            )
 
     # Discover query files from a single file or directory.
     if args.input.is_dir():
@@ -282,6 +297,12 @@ def _load_queries(args: argparse.Namespace) -> list[Query]:
 
 def dry_run(args: argparse.Namespace) -> None:
     """Validate selected queries and report pending work without writing outputs."""
+    if args.stage == "affinity":
+        from kfold.cli.predict_affinity import dry_run as check_affinity
+
+        check_affinity(args, _load_queries(args))
+        return
+
     from huggingface_hub import snapshot_download
 
     from kfold.cli.predict_complex import dry_run as predict_complex
@@ -310,11 +331,20 @@ def dry_run(args: argparse.Namespace) -> None:
 
 def run(args: argparse.Namespace) -> None:
     """Validate arguments, load queries, and run the selected prediction stages."""
+    from kfold.utils.runtime import select_kernel_backend
+
+    if args.stage == "affinity":
+        from kfold.cli.predict_affinity import run as predict_affinity
+
+        queries = _load_queries(args)
+        args.kernel_backend = select_kernel_backend(args.kernel_backend)
+        predict_affinity(args, queries)
+        return
+
     from huggingface_hub.utils import disable_progress_bars
 
     from kfold.cli.predict_complex import run as predict_complex
     from kfold.cli.prepare_apo import run as prepare_apo
-    from kfold.utils.runtime import select_kernel_backend
 
     if os.environ.get("OMP_NUM_THREADS") != "1":
         logger.warning(
